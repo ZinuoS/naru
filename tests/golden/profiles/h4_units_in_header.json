@@ -1,0 +1,95 @@
+{
+  "duplicate_headers": [],
+  "sheets": [
+    {
+      "columns": [
+        {
+          "cardinality": 22,
+          "header_text": "Trade Date",
+          "inferred_type": "string",
+          "null_rate": 0.0,
+          "position": 1,
+          "samples": [
+            "2022-01-03",
+            "2022-01-07",
+            "2022-01-11",
+            "2022-01-15",
+            "2022-01-19"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 4,
+          "header_text": "Counterparty",
+          "inferred_type": "string",
+          "null_rate": 0.0,
+          "position": 2,
+          "samples": [
+            "Alpha Bank",
+            "Beta Capital",
+            "Gamma Securities",
+            "Delta Partners"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 22,
+          "header_text": "Notional ($mm)",
+          "inferred_type": "float",
+          "null_rate": 0.0,
+          "position": 3,
+          "samples": [
+            "232.93",
+            "83.85",
+            "220.74",
+            "133.48",
+            "36.18"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 22,
+          "header_text": "Cpn (%)",
+          "inferred_type": "float",
+          "null_rate": 0.0,
+          "position": 4,
+          "samples": [
+            "6.707",
+            "3.121",
+            "5.091",
+            "1.548",
+            "3.919"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 17,
+          "header_text": "Px (32nds)",
+          "inferred_type": "integer",
+          "null_rate": 0.0,
+          "position": 5,
+          "samples": [
+            "5",
+            "6",
+            "30",
+            "11",
+            "8"
+          ],
+          "smells": []
+        }
+      ],
+      "dimensions": "A1:E23",
+      "header_candidates": [
+        {
+          "confidence": 0.8,
+          "row": 1
+        }
+      ],
+      "merged_cells": [],
+      "n_cols": 5,
+      "n_rows": 23,
+      "name": "Blotter"
+    }
+  ],
+  "source_file": "h4_units_in_header.xlsx"
+}

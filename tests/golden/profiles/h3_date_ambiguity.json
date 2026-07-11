@@ -1,0 +1,55 @@
+{
+  "duplicate_headers": [],
+  "sheets": [
+    {
+      "columns": [
+        {
+          "cardinality": 24,
+          "header_text": "Trade Date",
+          "inferred_type": "mixed",
+          "null_rate": 0.0,
+          "position": 1,
+          "samples": [
+            "43558",
+            "12/25/2019",
+            "07/01/2020",
+            "43993",
+            "06/30/2020"
+          ],
+          "smells": [
+            "date_serial_suspect"
+          ]
+        },
+        {
+          "cardinality": 23,
+          "header_text": "Amount",
+          "inferred_type": "integer",
+          "null_rate": 0.0,
+          "position": 2,
+          "samples": [
+            "5000",
+            "31500",
+            "95500",
+            "25500",
+            "12500"
+          ],
+          "smells": [
+            "date_serial_suspect"
+          ]
+        }
+      ],
+      "dimensions": "A1:B25",
+      "header_candidates": [
+        {
+          "confidence": 1.0,
+          "row": 1
+        }
+      ],
+      "merged_cells": [],
+      "n_cols": 2,
+      "n_rows": 25,
+      "name": "Trades"
+    }
+  ],
+  "source_file": "h3_date_ambiguity.xlsx"
+}

@@ -1,0 +1,81 @@
+{
+  "duplicate_headers": [],
+  "sheets": [
+    {
+      "columns": [
+        {
+          "cardinality": 28,
+          "header_text": "Ticker",
+          "inferred_type": "string",
+          "null_rate": 0.0345,
+          "position": 1,
+          "samples": [
+            "UPNG",
+            "NOO",
+            "GHPU",
+            "MKP",
+            "QHY"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 15,
+          "header_text": "Quantity",
+          "inferred_type": "mixed",
+          "null_rate": 0.0345,
+          "position": 2,
+          "samples": [
+            "-2500",
+            "-4600",
+            "2800",
+            "-3400",
+            "-1800"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 28,
+          "header_text": "Price",
+          "inferred_type": "mixed",
+          "null_rate": 0.0345,
+          "position": 3,
+          "samples": [
+            "339.97",
+            "450.07",
+            "378.55",
+            "215.73",
+            "226.23"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 14,
+          "header_text": null,
+          "inferred_type": "string",
+          "null_rate": 0.5172,
+          "position": 4,
+          "samples": [
+            "Trade Date",
+            "2021-03-01",
+            "2021-03-03",
+            "2021-03-05",
+            "2021-03-07"
+          ],
+          "smells": []
+        }
+      ],
+      "dimensions": "A1:D30",
+      "header_candidates": [
+        {
+          "confidence": 0.7083,
+          "row": 1
+        }
+      ],
+      "merged_cells": [],
+      "n_cols": 4,
+      "n_rows": 30,
+      "name": "Book"
+    }
+  ],
+  "source_file": "h2_two_tables.xlsx"
+}

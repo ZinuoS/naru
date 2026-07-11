@@ -1,0 +1,134 @@
+{
+  "duplicate_headers": [],
+  "sheets": [
+    {
+      "columns": [
+        {
+          "cardinality": 40,
+          "header_text": "Auction Date",
+          "inferred_type": "string",
+          "null_rate": 0.0698,
+          "position": 1,
+          "samples": [
+            "01/15/2019",
+            "01/22/2019",
+            "01/29/2019",
+            "02/05/2019",
+            "02/12/2019"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 11,
+          "header_text": "Security Term",
+          "inferred_type": "string",
+          "null_rate": 0.0698,
+          "position": 2,
+          "samples": [
+            "52-Week Bill",
+            "4-Week Bill",
+            "3-Year Note",
+            "7-Year Note",
+            "2-Year Note"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 40,
+          "header_text": "CUSIP",
+          "inferred_type": "string",
+          "null_rate": 0.0698,
+          "position": 3,
+          "samples": [
+            "91321819B",
+            "91838637A",
+            "91423511Y",
+            "91816184N",
+            "91131647Z"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 40,
+          "header_text": "High Yield",
+          "inferred_type": "string",
+          "null_rate": 0.0698,
+          "position": 4,
+          "samples": [
+            "3.695%",
+            "0.584%",
+            "4.375%",
+            "4.881%",
+            "4.066%"
+          ],
+          "smells": [
+            "percent_string"
+          ]
+        },
+        {
+          "cardinality": 33,
+          "header_text": "Offering Amt ($MM)",
+          "inferred_type": "string",
+          "null_rate": 0.0698,
+          "position": 5,
+          "samples": [
+            "23,000",
+            "49,000",
+            "40,000",
+            "53,000",
+            "25,000"
+          ],
+          "smells": [
+            "thousands_separator"
+          ]
+        },
+        {
+          "cardinality": 34,
+          "header_text": "Settlement Detail",
+          "inferred_type": "float",
+          "null_rate": 0.0698,
+          "position": 6,
+          "samples": [
+            "2.69",
+            "2.5",
+            "2.66",
+            "2.75",
+            "2.63"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 40,
+          "header_text": null,
+          "inferred_type": "integer",
+          "null_rate": 0.0698,
+          "position": 7,
+          "samples": [
+            "43482",
+            "43489",
+            "43496",
+            "43503",
+            "43510"
+          ],
+          "smells": [
+            "date_serial_suspect"
+          ]
+        }
+      ],
+      "dimensions": "A1:G46",
+      "header_candidates": [
+        {
+          "confidence": 0.5714,
+          "row": 3
+        }
+      ],
+      "merged_cells": [
+        "F3:G3"
+      ],
+      "n_cols": 7,
+      "n_rows": 46,
+      "name": "Results"
+    }
+  ],
+  "source_file": "ust_lite.xlsx"
+}

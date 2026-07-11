@@ -1,0 +1,80 @@
+{
+  "duplicate_headers": [],
+  "sheets": [
+    {
+      "columns": [
+        {
+          "cardinality": 31,
+          "header_text": "Position ID",
+          "inferred_type": "string",
+          "null_rate": 0.0312,
+          "position": 1,
+          "samples": [
+            "P200000",
+            "P200001",
+            "P200002",
+            "P200003",
+            "P200004"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 4,
+          "header_text": "Desk",
+          "inferred_type": "string",
+          "null_rate": 0.125,
+          "position": 2,
+          "samples": [
+            "Credit",
+            "FX",
+            "Equities",
+            "Rates"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 10,
+          "header_text": "Book",
+          "inferred_type": "string",
+          "null_rate": 0.125,
+          "position": 3,
+          "samples": [
+            "BOOK-05",
+            "BOOK-06",
+            "BOOK-09",
+            "BOOK-01",
+            "BOOK-10"
+          ],
+          "smells": []
+        },
+        {
+          "cardinality": 28,
+          "header_text": "Market Value",
+          "inferred_type": "float",
+          "null_rate": 0.125,
+          "position": 4,
+          "samples": [
+            "3443100.62",
+            "2016520.39",
+            "2950128.65",
+            "-931577.16",
+            "356153.15"
+          ],
+          "smells": []
+        }
+      ],
+      "dimensions": "A1:D39",
+      "header_candidates": [
+        {
+          "confidence": 0.625,
+          "row": 7
+        }
+      ],
+      "merged_cells": [],
+      "n_cols": 4,
+      "n_rows": 39,
+      "name": "Positions"
+    }
+  ],
+  "source_file": "h5_buried_header.xlsx"
+}
