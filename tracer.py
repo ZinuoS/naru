@@ -183,12 +183,26 @@ def parse_excel_serial_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
     return df
 
 
+def coerce_float_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Coerce a column to float64.
+
+    Needed even for columns that are already numeric cell-by-cell: the raw
+    grid mixes types within a column (banner/header text above, blanks
+    below), which forces pandas to infer `object` dtype for the whole
+    column. Slicing down to data rows later does not re-infer the dtype.
+    """
+    df = df.copy()
+    df[column] = df[column].astype(float)
+    return df
+
+
 def transform(raw_grid: pd.DataFrame) -> pd.DataFrame:
     """Apply the full hardcoded transform chain, preserving `_src_row` throughout."""
     df = promote_header(raw_grid)
     df = drop_trailing_blanks(df)
     df = coerce_thousands_column(df, "offering_amt")
     df = coerce_percent_column(df, "high_yield")
+    df = coerce_float_column(df, "bid_to_cover")
     df = parse_date_string_column(df, "auction_date")
     df = parse_excel_serial_column(df, "issue_date")
     return df[[*COLUMN_NAMES, "_src_row"]]
