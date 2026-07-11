@@ -41,5 +41,9 @@ python_version = "3.11"
 strict = true
 files = ["src", "tests"]
 
+[[tool.mypy.overrides]]
+module = "openpyxl.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
