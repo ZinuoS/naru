@@ -1,9 +1,10 @@
 """Tracer bullet: ust_lite.xlsx -> naru.sqlite, end to end, provenance intact.
 
 Deliberately outside src/naru/ — this is throwaway scaffolding proving the
-architecture works before Phase 1 extracts real, tested, typed ops. Every
-transform here is hardcoded to this one fixture; nothing here is the
-constrained op API described in docs/spec.md §2.4.
+architecture works before Phase 1 extracts real, tested, typed ops. The
+structural ops (promote_header, drop_blank_rows) have moved to
+src/naru/ops.py; the coercion/date-parsing steps below remain hardcoded to
+this fixture's specific columns pending further extraction.
 
 Per docs/adr/0001-lineage-carrier.md: provenance rides as an ordinary
 `_src_row` column through every transform, not a wrapper type.
@@ -30,6 +31,8 @@ from typing import Any
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.utils.datetime import from_excel
+
+from naru import ops
 
 REPO_ROOT = Path(__file__).resolve().parent
 FIXTURE_PATH = REPO_ROOT / "tests" / "fixtures" / "ust_lite.xlsx"
@@ -140,21 +143,6 @@ def read_raw_grid(xlsx_path: Path, sheet_name: str) -> pd.DataFrame:
     return pd.DataFrame.from_records(records)
 
 
-def promote_header(df: pd.DataFrame) -> pd.DataFrame:
-    """Drop the two banner rows and the header row; assign column names by
-    position (see COLUMN_NAMES docstring above for why not by header text).
-    """
-    data_rows = df[df["_src_row"] > HEADER_ROW].copy()
-    data_rows.columns = pd.Index([*COLUMN_NAMES, "_src_row"])
-    return data_rows.reset_index(drop=True)
-
-
-def drop_trailing_blanks(df: pd.DataFrame) -> pd.DataFrame:
-    """Drop rows where every business column is null, keeping `_src_row`."""
-    business_cols = [c for c in df.columns if c != "_src_row"]
-    return df.dropna(subset=business_cols, how="all").reset_index(drop=True)
-
-
 def coerce_thousands_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
     """Coerce a comma-thousands numeric string column to float, e.g. '38,000' -> 38000.0."""
     df = df.copy()
@@ -198,8 +186,8 @@ def coerce_float_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
 
 def transform(raw_grid: pd.DataFrame) -> pd.DataFrame:
     """Apply the full hardcoded transform chain, preserving `_src_row` throughout."""
-    df = promote_header(raw_grid)
-    df = drop_trailing_blanks(df)
+    df = ops.promote_header(raw_grid, header_row=HEADER_ROW, column_names=COLUMN_NAMES)
+    df = ops.drop_blank_rows(df)
     df = coerce_thousands_column(df, "offering_amt")
     df = coerce_percent_column(df, "high_yield")
     df = coerce_float_column(df, "bid_to_cover")
