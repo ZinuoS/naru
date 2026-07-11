@@ -145,12 +145,12 @@ def read_raw_grid(xlsx_path: Path, sheet_name: str) -> pd.DataFrame:
 def transform(raw_grid: pd.DataFrame) -> pd.DataFrame:
     """Apply the full hardcoded transform chain, preserving `_src_row` throughout."""
     df = ops.promote_header(raw_grid, header_row=HEADER_ROW, column_names=COLUMN_NAMES)
-    df = ops.drop_blank_rows(df)
-    df = ops.coerce_thousands(df, "offering_amt")
-    df = ops.coerce_percent(df, "high_yield")
-    df = ops.coerce_float(df, "bid_to_cover")
-    df = ops.parse_date_string(df, "auction_date", fmt="%m/%d/%Y")
-    df = ops.parse_excel_serial_date(df, "issue_date")
+    df = ops.drop_empty(df)
+    df = ops.coerce_numeric(df, "offering_amt")
+    df = ops.coerce_numeric(df, "high_yield")
+    df = ops.coerce_numeric(df, "bid_to_cover")
+    df = ops.coerce_date(df, "auction_date", fmt="%m/%d/%Y")
+    df = ops.coerce_date(df, "issue_date")
     return df[[*COLUMN_NAMES, "_src_row"]]
 
 
