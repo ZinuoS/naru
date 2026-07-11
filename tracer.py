@@ -1,10 +1,10 @@
 """Tracer bullet: ust_lite.xlsx -> naru.sqlite, end to end, provenance intact.
 
 Deliberately outside src/naru/ — this is throwaway scaffolding proving the
-architecture works before Phase 1 extracts real, tested, typed ops. The
-structural ops (promote_header, drop_blank_rows) have moved to
-src/naru/ops.py; the coercion/date-parsing steps below remain hardcoded to
-this fixture's specific columns pending further extraction.
+architecture works before Phase 1 extracts real, tested, typed ops. Every
+transform step now composes generic, tested ops from src/naru/ops.py;
+only the fixture-specific parameters (column names, header row, date
+format) remain hardcoded here.
 
 Per docs/adr/0001-lineage-carrier.md: provenance rides as an ordinary
 `_src_row` column through every transform, not a wrapper type.
@@ -30,7 +30,6 @@ from typing import Any
 
 import pandas as pd
 from openpyxl import load_workbook
-from openpyxl.utils.datetime import from_excel
 
 from naru import ops
 
@@ -143,56 +142,15 @@ def read_raw_grid(xlsx_path: Path, sheet_name: str) -> pd.DataFrame:
     return pd.DataFrame.from_records(records)
 
 
-def coerce_thousands_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
-    """Coerce a comma-thousands numeric string column to float, e.g. '38,000' -> 38000.0."""
-    df = df.copy()
-    df[column] = df[column].astype(str).str.replace(",", "", regex=False).astype(float)
-    return df
-
-
-def coerce_percent_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
-    """Coerce a '%'-suffixed string column to a decimal fraction, e.g. '2.747%' -> 0.02747."""
-    df = df.copy()
-    df[column] = df[column].astype(str).str.rstrip("%").astype(float) / 100.0
-    return df
-
-
-def parse_date_string_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
-    """Parse an mm/dd/yyyy string column into ISO-8601 date strings."""
-    df = df.copy()
-    df[column] = pd.to_datetime(df[column], format="%m/%d/%Y").dt.date.astype(str)
-    return df
-
-
-def parse_excel_serial_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
-    """Parse an Excel date-serial numeric column into ISO-8601 date strings."""
-    df = df.copy()
-    df[column] = df[column].apply(lambda v: from_excel(v).date().isoformat())
-    return df
-
-
-def coerce_float_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
-    """Coerce a column to float64.
-
-    Needed even for columns that are already numeric cell-by-cell: the raw
-    grid mixes types within a column (banner/header text above, blanks
-    below), which forces pandas to infer `object` dtype for the whole
-    column. Slicing down to data rows later does not re-infer the dtype.
-    """
-    df = df.copy()
-    df[column] = df[column].astype(float)
-    return df
-
-
 def transform(raw_grid: pd.DataFrame) -> pd.DataFrame:
     """Apply the full hardcoded transform chain, preserving `_src_row` throughout."""
     df = ops.promote_header(raw_grid, header_row=HEADER_ROW, column_names=COLUMN_NAMES)
     df = ops.drop_blank_rows(df)
-    df = coerce_thousands_column(df, "offering_amt")
-    df = coerce_percent_column(df, "high_yield")
-    df = coerce_float_column(df, "bid_to_cover")
-    df = parse_date_string_column(df, "auction_date")
-    df = parse_excel_serial_column(df, "issue_date")
+    df = ops.coerce_thousands(df, "offering_amt")
+    df = ops.coerce_percent(df, "high_yield")
+    df = ops.coerce_float(df, "bid_to_cover")
+    df = ops.parse_date_string(df, "auction_date", fmt="%m/%d/%Y")
+    df = ops.parse_excel_serial_date(df, "issue_date")
     return df[[*COLUMN_NAMES, "_src_row"]]
 
 

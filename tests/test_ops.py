@@ -54,3 +54,45 @@ class TestDropBlankRows:
         df = pd.DataFrame({"x": [None], "_src_row": [1]})
         result = ops.drop_blank_rows(df)
         assert result.empty
+
+
+class TestCoerceThousands:
+    def test_strips_commas_and_converts_to_float(self) -> None:
+        df = pd.DataFrame({"x": ["38,000", "1,234"]})
+        result = ops.coerce_thousands(df, "x")
+        assert result["x"].tolist() == [38000.0, 1234.0]
+        assert result["x"].dtype == "float64"
+
+    def test_handles_values_without_commas(self) -> None:
+        df = pd.DataFrame({"x": ["500"]})
+        result = ops.coerce_thousands(df, "x")
+        assert result["x"].tolist() == [500.0]
+
+
+class TestCoercePercent:
+    def test_strips_percent_sign_and_divides_by_100(self) -> None:
+        df = pd.DataFrame({"x": ["2.747%", "0%"]})
+        result = ops.coerce_percent(df, "x")
+        assert result["x"].tolist() == pytest.approx([0.02747, 0.0])
+
+
+class TestCoerceFloat:
+    def test_converts_object_dtype_column_to_float64(self) -> None:
+        df = pd.DataFrame({"x": pd.Series([1.5, 2.5], dtype="object")})
+        result = ops.coerce_float(df, "x")
+        assert result["x"].dtype == "float64"
+        assert result["x"].tolist() == [1.5, 2.5]
+
+
+class TestParseDateString:
+    def test_parses_mm_dd_yyyy_into_iso_date_strings(self) -> None:
+        df = pd.DataFrame({"x": ["01/15/2019", "12/31/2020"]})
+        result = ops.parse_date_string(df, "x", fmt="%m/%d/%Y")
+        assert result["x"].tolist() == ["2019-01-15", "2020-12-31"]
+
+
+class TestParseExcelSerialDate:
+    def test_parses_serial_number_into_iso_date_string(self) -> None:
+        df = pd.DataFrame({"x": [43480]})
+        result = ops.parse_excel_serial_date(df, "x")
+        assert result["x"].tolist() == ["2019-01-15"]

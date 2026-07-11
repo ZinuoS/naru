@@ -8,6 +8,7 @@ the row.
 """
 
 import pandas as pd
+from openpyxl.utils.datetime import from_excel
 
 DEFAULT_ROW_MARKER = "_src_row"
 
@@ -52,3 +53,67 @@ def drop_blank_rows(df: pd.DataFrame, row_marker: str = DEFAULT_ROW_MARKER) -> p
     """
     business_cols = [c for c in df.columns if c != row_marker]
     return df.dropna(subset=business_cols, how="all").reset_index(drop=True)
+
+
+def coerce_thousands(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Coerce a comma-thousands numeric string column to float.
+
+    >>> coerce_thousands(pd.DataFrame({"x": ["38,000"]}), "x")
+            x
+    0  38000.0
+    """
+    df = df.copy()
+    df[column] = df[column].astype(str).str.replace(",", "", regex=False).astype(float)
+    return df
+
+
+def coerce_percent(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Coerce a '%'-suffixed string column to a decimal fraction.
+
+    >>> coerce_percent(pd.DataFrame({"x": ["2.747%"]}), "x")
+            x
+    0  0.02747
+    """
+    df = df.copy()
+    df[column] = df[column].astype(str).str.rstrip("%").astype(float) / 100.0
+    return df
+
+
+def coerce_float(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Coerce a column to float64.
+
+    Needed even for columns that already hold numeric values cell-by-cell:
+    if the column ever shared a raw grid with text (banner/header rows) or
+    blanks, pandas infers `object` dtype for the whole column, and slicing
+    rows out later does not retroactively re-infer it.
+
+    >>> coerce_float(pd.DataFrame({"x": [2.5]}), "x").dtypes["x"]
+    dtype('float64')
+    """
+    df = df.copy()
+    df[column] = df[column].astype(float)
+    return df
+
+
+def parse_date_string(df: pd.DataFrame, column: str, fmt: str) -> pd.DataFrame:
+    """Parse a string date column in the given strptime format into ISO-8601 date strings.
+
+    >>> parse_date_string(pd.DataFrame({"x": ["01/15/2019"]}), "x", "%m/%d/%Y")
+                x
+    0  2019-01-15
+    """
+    df = df.copy()
+    df[column] = pd.to_datetime(df[column], format=fmt).dt.date.astype(str)
+    return df
+
+
+def parse_excel_serial_date(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Parse an Excel date-serial numeric column into ISO-8601 date strings.
+
+    >>> parse_excel_serial_date(pd.DataFrame({"x": [43480]}), "x")
+                x
+    0  2019-01-15
+    """
+    df = df.copy()
+    df[column] = df[column].apply(lambda v: from_excel(v).date().isoformat())
+    return df
