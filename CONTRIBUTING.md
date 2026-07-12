@@ -37,8 +37,8 @@ change the design, not to add an exception.
 ## Development setup
 
 ```bash
-git clone https://github.com/ZinuoS/naru.git
-cd naru
+git clone https://github.com/ZinuoS/naru-data.git
+cd naru-data
 uv sync
 uv run pre-commit install
 ```

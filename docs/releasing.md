@@ -5,17 +5,16 @@ matching `v*` — a tag containing `rc` (e.g. `v0.1.0rc1`) goes to
 TestPyPI only; anything else (e.g. `v0.1.0`) goes to real PyPI. Both
 publish steps use [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
 (OIDC) — no API token is stored in this repo, but a Trusted Publisher
-has to be configured on each index, for this exact repo and workflow
-filename, before the corresponding job can succeed. That setup is a
-one-time, account-holder-only action — the numbered steps below are for
-whoever holds (or is creating) the PyPI/TestPyPI accounts for this
-project.
-
+has to be configured on each index first, for this exact repo
+(`ZinuoS/naru-data`), workflow filename (`release.yml`), and environment
+name (`pypi` / `testpypi`), before the corresponding job can succeed.
+That's a one-time, account-holder-only action on pypi.org and
+test.pypi.org (Account settings → Publishing) — not something this repo
+can configure for itself.
 
 ## Tagging a release candidate
 
-Once step 3 above (the PyPI *pending* Trusted Publisher, step 3) and
-step 4 (TestPyPI) are both done:
+Once the Trusted Publisher is configured on both PyPI and TestPyPI:
 
 ```bash
 git checkout main

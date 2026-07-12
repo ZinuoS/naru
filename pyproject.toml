@@ -54,10 +54,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ZinuoS/naru"
-Source = "https://github.com/ZinuoS/naru"
-Issues = "https://github.com/ZinuoS/naru/issues"
-Changelog = "https://github.com/ZinuoS/naru/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/ZinuoS/naru-data"
+Source = "https://github.com/ZinuoS/naru-data"
+Issues = "https://github.com/ZinuoS/naru-data/issues"
+Changelog = "https://github.com/ZinuoS/naru-data/blob/main/CHANGELOG.md"
 
 [project.scripts]
 naru = "naru.cli:app"

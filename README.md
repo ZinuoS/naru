@@ -5,10 +5,10 @@ formulae against alteration) turns messy Excel/CSV files into governed
 SQLite databases: **compile-time intelligence, run-time determinism.**
 The current version of Naru specialises in the financial document pipelines.
 
-[![CI](https://github.com/ZinuoS/naru/actions/workflows/ci.yml/badge.svg)](https://github.com/ZinuoS/naru/actions/workflows/ci.yml)
+[![CI](https://github.com/ZinuoS/naru-data/actions/workflows/ci.yml/badge.svg)](https://github.com/ZinuoS/naru-data/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/naru-data)](https://pypi.org/project/naru-data/)
 [![Python versions](https://img.shields.io/pypi/pyversions/naru-data)](https://pypi.org/project/naru-data/)
-[![License](https://img.shields.io/github/license/ZinuoS/naru)](LICENSE)
+[![License](https://img.shields.io/github/license/ZinuoS/naru-data)](LICENSE)
 
 
 <!--
@@ -39,8 +39,8 @@ python -c "import naru; print(naru.__version__)"
 ## Quickstart (from a clone, for trying the worked examples)
 
 ```bash
-git clone https://github.com/ZinuoS/naru.git
-cd naru
+git clone https://github.com/ZinuoS/naru-data.git
+cd naru-data
 uv sync
 ```
 
