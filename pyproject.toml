@@ -13,6 +13,7 @@ authors = [
     { name = "Zinuo A Shi", email = "168945244+ZinuoS@users.noreply.github.com" },
 ]
 keywords = [
+    "naru",
     "excel",
     "etl",
     "data-pipeline",
