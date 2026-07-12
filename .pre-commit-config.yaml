@@ -10,6 +10,10 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [pydantic>=2, pytest]
+        # transform.py files run inside naru.artifact's exec() sandbox
+        # (docs/adr/0003-transform-loading.md): `ops` is a namespace
+        # global injected at run time, not a real import mypy can see.
+        exclude: ^pipelines/.*/transform\.py$
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

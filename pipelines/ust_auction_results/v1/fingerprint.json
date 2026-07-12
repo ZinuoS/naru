@@ -1,0 +1,14 @@
+{
+  "sheet": "Results",
+  "header_row": 3,
+  "columns": [
+    {"name": "auction_date", "type": "string", "strictness": "position_only"},
+    {"name": "security_term", "type": "string", "strictness": "position_only"},
+    {"name": "cusip", "type": "string", "strictness": "position_only"},
+    {"name": "high_yield", "type": "string", "strictness": "position_only"},
+    {"name": "offering_amt", "type": "string", "strictness": "position_only"},
+    {"name": "bid_to_cover", "type": "float", "strictness": "position_only"},
+    {"name": "issue_date", "type": "integer", "strictness": "position_only"}
+  ],
+  "max_rows_from_header_to_data": 1
+}

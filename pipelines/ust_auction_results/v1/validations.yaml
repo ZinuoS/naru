@@ -1,0 +1,29 @@
+row_count:
+  min: 1
+
+key_uniqueness:
+  - columns: [auction_date]
+
+null_policy:
+  - column: auction_date
+    nulls_allowed: false
+  - column: security_term
+    nulls_allowed: false
+  - column: cusip
+    nulls_allowed: false
+  - column: high_yield
+    nulls_allowed: false
+  - column: offering_amt
+    nulls_allowed: false
+  - column: bid_to_cover
+    nulls_allowed: false
+  - column: issue_date
+    nulls_allowed: false
+
+value_ranges:
+  - column: high_yield
+    min: 0.0
+    max: 1.0
+  - column: bid_to_cover
+    min: 0.0
+    max: 10.0

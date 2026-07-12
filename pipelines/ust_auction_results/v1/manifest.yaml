@@ -1,0 +1,5 @@
+name: ust_auction_results
+version: v1
+sheet: Results
+target_table: final_auction_results
+key: [auction_date]
