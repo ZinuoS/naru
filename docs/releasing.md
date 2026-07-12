@@ -11,42 +11,6 @@ one-time, account-holder-only action — the numbered steps below are for
 whoever holds (or is creating) the PyPI/TestPyPI accounts for this
 project.
 
-## One-time setup (do this once, before the first release tag)
-
-1. Create a PyPI account at <https://pypi.org/account/register/>, if you
-   don't already have one. Enable two-factor authentication:
-   Account settings → Add 2FA — PyPI requires 2FA for anyone who
-   manages a project, so do this before step 3, not after.
-2. Create a **separate** TestPyPI account at
-   <https://test.pypi.org/account/register/> (TestPyPI accounts are
-   entirely separate from PyPI's — a PyPI login does not carry over).
-   Enable 2FA there too: Account settings → Add 2FA.
-3. On PyPI, configure a Trusted Publisher for this project *before it
-   exists there yet* (PyPI supports pre-registering a Trusted Publisher
-   for a project name that hasn't been published under your account
-   yet — this is exactly that case):
-   - Go to <https://pypi.org/manage/account/publishing/>
-   - Under "Add a new pending publisher," fill in:
-     - PyPI Project Name: `naru-data` (`naru` was already taken on PyPI;
-       see pyproject.toml's own comment on `[project] name` — the
-       import name, CLI command, and everything else stays `naru`)
-     - Owner: `ZinuoS`
-     - Repository name: `naru`
-     - Workflow filename: `release.yml`
-     - Environment name: `pypi`
-   - Submit. This creates a *pending* publisher that activates the
-     first time the workflow successfully publishes.
-4. Repeat step 3 on TestPyPI at
-   <https://test.pypi.org/manage/account/publishing/>, with the same
-   values except:
-     - Environment name: `testpypi`
-5. Optional, recommended: on GitHub, go to this repo's
-   Settings → Environments, open (or create) the `pypi` environment, and
-   add yourself as a required reviewer. This makes the real-PyPI publish
-   job pause for manual approval every time, even after the Trusted
-   Publisher is fully configured — a deliberate pause point before
-   anything reaches the real index. Do the same for `testpypi` if you
-   want the same pause there too (lower stakes, so optional).
 
 ## Tagging a release candidate
 
