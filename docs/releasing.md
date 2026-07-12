@@ -27,7 +27,9 @@ project.
    yet — this is exactly that case):
    - Go to <https://pypi.org/manage/account/publishing/>
    - Under "Add a new pending publisher," fill in:
-     - PyPI Project Name: `naru`
+     - PyPI Project Name: `naru-data` (`naru` was already taken on PyPI;
+       see pyproject.toml's own comment on `[project] name` — the
+       import name, CLI command, and everything else stays `naru`)
      - Owner: `ZinuoS`
      - Repository name: `naru`
      - Workflow filename: `release.yml`
@@ -60,8 +62,14 @@ git push origin v0.1.0rc1
 
 Watch the "Release" workflow run under this repo's Actions tab. If
 `publish-testpypi` succeeds, verify the install works from TestPyPI
-(see PREFLIGHT.md's pre-flight checklist for the exact command) before
-tagging the real release.
+before tagging the real release (TestPyPI doesn't mirror PyPI's other
+packages, so dependencies have to come from the real index):
+
+```bash
+pip install -i https://test.pypi.org/simple/ \
+    --extra-index-url https://pypi.org/simple/ naru-data
+naru --version
+```
 
 ## Tagging the real release
 
@@ -75,7 +83,7 @@ git push origin v0.1.0
 ```
 
 This triggers `publish-pypi` instead of `publish-testpypi` (no `rc` in
-the tag name). Verify a cold `pip install naru` works on a second
+the tag name). Verify a cold `pip install naru-data` works on a second
 machine, then create the GitHub Release with hand-written notes
 (Releases → Draft a new release → choose the `v0.1.0` tag) — this last
 step is manual on purpose; nobody should read auto-generated release

@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Initial public release: the whole compile-time-intelligence /
 run-time-determinism thesis, end to end.
 
+### Changed
+
+- PyPI distribution name is `naru-data`, not `naru` — the bare name was
+  already taken (spec.md's own header pre-registered this exact
+  fallback). `pip install naru-data`; the Python import (`import naru`)
+  and the `naru` CLI command are unaffected.
+
 ### Added
 
 - Constrained op API (`naru.ops`): pure `DataFrame -> DataFrame`

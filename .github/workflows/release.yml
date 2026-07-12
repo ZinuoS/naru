@@ -68,7 +68,7 @@ jobs:
         run: |
           set -e
           tag_version="${GITHUB_REF_NAME#v}"
-          pkg_version="$(uv run python -c 'from importlib.metadata import version; print(version("naru"))')"
+          pkg_version="$(uv run python -c 'from importlib.metadata import version; print(version("naru-data"))')"
           if [ "$tag_version" != "$pkg_version" ]; then
             echo "Tag $GITHUB_REF_NAME does not match package version $pkg_version" >&2
             exit 1

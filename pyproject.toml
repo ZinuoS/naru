@@ -1,5 +1,9 @@
 [project]
-name = "naru"
+# Distribution name on PyPI -- "naru" was already taken (see docs/spec.md's
+# own header note, which pre-registered this exact fallback). The Python
+# import name, the "naru" CLI command, and everything else in this project
+# stay "naru" -- only the `pip install <name>` name is different.
+name = "naru-data"
 version = "0.1.0"
 description = "Deterministic pipeline artifacts for messy financial data: compile-time intelligence, run-time determinism"
 readme = "README.md"

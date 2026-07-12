@@ -6,8 +6,8 @@ SQLite databases: **compile-time intelligence, run-time determinism.**
 The current version of Naru specialises in the financial document pipelines. 
 
 [![CI](https://github.com/ZinuoS/naru/actions/workflows/ci.yml/badge.svg)](https://github.com/ZinuoS/naru/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/naru)](https://pypi.org/project/naru/)
-[![Python versions](https://img.shields.io/pypi/pyversions/naru)](https://pypi.org/project/naru/)
+[![PyPI](https://img.shields.io/pypi/v/naru-data)](https://pypi.org/project/naru-data/)
+[![Python versions](https://img.shields.io/pypi/pyversions/naru-data)](https://pypi.org/project/naru-data/)
 [![License](https://img.shields.io/github/license/ZinuoS/naru)](LICENSE)
 
 
@@ -22,7 +22,21 @@ DEMO-GIF-SLOT: record after the Quickstart below is verified working.
      replace this HTML comment with: ![naru demo](docs/naru-demo.gif)
 -->
 
-## Quickstart
+## Installation
+
+```bash
+pip install naru-data
+```
+
+The PyPI distribution is `naru-data` (`naru` was already taken) — the
+Python import, the CLI command, and everything else stays `naru`:
+
+```bash
+naru --help
+python -c "import naru; print(naru.__version__)"
+```
+
+## Quickstart (from a clone, for trying the worked examples)
 
 ```bash
 git clone https://github.com/ZinuoS/naru.git
