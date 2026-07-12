@@ -9,6 +9,7 @@ import pytest
 from openpyxl import Workbook
 from typer.testing import CliRunner
 
+import naru
 from naru import cli
 from naru.mapping import ColumnMapping, ExcelTarget, Mapping, to_yaml
 from naru.profiler import profile as profile_fn
@@ -765,6 +766,13 @@ class TestNoArgsShowsHelp:
     def test_bare_invocation_shows_help(self) -> None:
         result = runner.invoke(cli.app, [])
         assert "Commands" in result.output
+
+
+class TestVersion:
+    def test_version_flag_prints_version_and_exits_zero(self) -> None:
+        result = runner.invoke(cli.app, ["--version"])
+        assert result.exit_code == 0
+        assert result.output.strip() == f"naru {naru.__version__}"
 
 
 class TestMainModule:

@@ -16,7 +16,7 @@ from typing import Annotated, Literal
 
 import typer
 
-from naru import map_suggest
+from naru import __version__, map_suggest
 from naru import mapping as mapping_module
 from naru import query as query_lib
 from naru.goldenharness import run_golden_test
@@ -31,6 +31,22 @@ from naru.runtime import run as run_fn
 app = typer.Typer(no_args_is_help=True, help="Deterministic pipeline artifacts for messy files.")
 map_app = typer.Typer(no_args_is_help=True, help="Design-time crosswalk suggestion and learning.")
 app.add_typer(map_app, name="map")
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"naru {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: Annotated[
+        bool, typer.Option("--version", callback=_version_callback, is_eager=True)
+    ] = False,
+) -> None:
+    pass
+
 
 DEFAULT_DB_PATH = Path("naru.sqlite")
 DEFAULT_RAW_DIR = Path(".naru/raw")

@@ -95,14 +95,15 @@ class ExcelTarget(BaseModel):
     from `first_data_col` to `last_data_col`, left to right -- this is
     how naru.mirror knows which column to write each mapped value into.
 
-    `first_data_col` must be `"A"` in v0.1: naru.fingerprint.
-    check_fingerprint assumes a header signature's columns start at
-    position 1, and extending it to check an arbitrary offset region is
-    deferred rather than complicating that shared, general-purpose
-    machinery mid-feature. A warehouse sheet with real, non-region
-    columns to its right of the mirrored region is fully supported
-    (last_data_col need not reach the sheet's edge) -- only columns to
-    the *left* of the region are the v0.1 restriction.
+    `first_data_col` must be `"A"` in v0.1 -- see
+    docs/adr/0004-excel-mirror-region-offset.md for why (short version:
+    naru.fingerprint.check_fingerprint assumes a header signature's
+    columns start at position 1, and extending it to check an arbitrary
+    offset region is deferred rather than complicating that shared,
+    general-purpose machinery mid-feature). A warehouse sheet with real,
+    non-region columns to the right of the mirrored region is fully
+    supported (last_data_col need not reach the sheet's edge) -- only
+    columns to the *left* of the region are the v0.1 restriction.
     """
 
     path: str
@@ -124,10 +125,8 @@ class ExcelTarget(BaseModel):
     def _must_start_at_column_a(cls, value: str) -> str:
         if value != "A":
             raise ValueError(
-                "first_data_col must be 'A' in v0.1 -- naru.fingerprint."
-                "check_fingerprint assumes a region's header columns start at "
-                "position 1; an offset region is deferred (see naru.mapping."
-                "ExcelTarget's docstring)"
+                "first_data_col must be 'A' in v0.1 -- see "
+                "docs/adr/0004-excel-mirror-region-offset.md"
             )
         return value
 
