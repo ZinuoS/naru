@@ -8,6 +8,17 @@ TargetRow, reused for the warehouse table's DDL). It doesn't need
 transform.py/validations.yaml/golden/CHANGELOG.md -- those belong to the
 full run() pipeline, not to mirroring.
 
+When `mapping.excel_target` is set, a fourth file is required:
+warehouse_fingerprint.json -- the exact same Fingerprint model and
+check_fingerprint() function used for source-side drift detection,
+reused verbatim for the warehouse side (spec.md §2.7: "fingerprint check
+on both sides... each halt with a report"). Its `sheet`/`header_row`
+double as the declared data region's own sheet/header row -- ExcelTarget
+only adds what Fingerprint doesn't already cover: which physical file,
+the region's column-letter boundaries, and which target field lives in
+each column position (needed to know where to write new rows; unrelated
+to what the drift check reads).
+
 Two load modes, matching spec.md §2.7 ("every mapping line requires
 approved: true... before naru lint allows the artifact to freeze"):
 `load_mapping` always succeeds and is for design-time review (map
@@ -36,6 +47,7 @@ from typing import Literal
 
 import pandas as pd
 import yaml
+from openpyxl.utils import column_index_from_string
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
 from naru import ops as ops_module
@@ -74,12 +86,74 @@ class ColumnMapping(BaseModel):
         return self
 
 
+class ExcelTarget(BaseModel):
+    """Declares an append-only data region for an Excel mirror target.
+    `sheet` and `header_row` are NOT here -- they live in
+    warehouse_fingerprint.json (the same Fingerprint model source-side
+    drift detection uses), so the region's location is declared exactly
+    once. `column_order` gives the target field name at each position
+    from `first_data_col` to `last_data_col`, left to right -- this is
+    how naru.mirror knows which column to write each mapped value into.
+
+    `first_data_col` must be `"A"` in v0.1: naru.fingerprint.
+    check_fingerprint assumes a header signature's columns start at
+    position 1, and extending it to check an arbitrary offset region is
+    deferred rather than complicating that shared, general-purpose
+    machinery mid-feature. A warehouse sheet with real, non-region
+    columns to its right of the mirrored region is fully supported
+    (last_data_col need not reach the sheet's edge) -- only columns to
+    the *left* of the region are the v0.1 restriction.
+    """
+
+    path: str
+    first_data_col: str
+    last_data_col: str
+    column_order: list[str]
+
+    @field_validator("first_data_col", "last_data_col")
+    @classmethod
+    def _valid_column_letter(cls, value: str) -> str:
+        try:
+            column_index_from_string(value)
+        except ValueError as exc:
+            raise ValueError(f"{value!r} is not a valid Excel column letter") from exc
+        return value
+
+    @field_validator("first_data_col")
+    @classmethod
+    def _must_start_at_column_a(cls, value: str) -> str:
+        if value != "A":
+            raise ValueError(
+                "first_data_col must be 'A' in v0.1 -- naru.fingerprint."
+                "check_fingerprint assumes a region's header columns start at "
+                "position 1; an offset region is deferred (see naru.mapping."
+                "ExcelTarget's docstring)"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _region_width_matches_column_order(self) -> "ExcelTarget":
+        # first_data_col is always "A" (see _must_start_at_column_a), so
+        # first <= last always holds for any valid last_data_col -- no
+        # separate "first before last" check is reachable to write.
+        first = column_index_from_string(self.first_data_col)
+        last = column_index_from_string(self.last_data_col)
+        width = last - first + 1
+        if len(self.column_order) != width:
+            raise ValueError(
+                f"column_order has {len(self.column_order)} entries but the region "
+                f"{self.first_data_col}:{self.last_data_col} is {width} column(s) wide"
+            )
+        return self
+
+
 class Mapping(BaseModel):
     target: str
     key: list[str]
     on_duplicate: Literal["fail", "skip"]
     columns: list[ColumnMapping]
     unmapped_source_columns: Literal["warn", "fail"]
+    excel_target: ExcelTarget | None = None
 
     @field_validator("on_duplicate")
     @classmethod
@@ -205,6 +279,7 @@ class MappingArtifact:
     mapping: Mapping
     fingerprint: Fingerprint
     target_row: type[BaseModel]
+    warehouse_fingerprint: Fingerprint | None = None
 
 
 def _load_target_row(path: Path) -> type[BaseModel]:
@@ -225,11 +300,19 @@ def _load_target_row(path: Path) -> type[BaseModel]:
     return cls
 
 
+def _load_fingerprint(path: Path) -> Fingerprint:
+    try:
+        return _load_json_model(path, Fingerprint)
+    except ArtifactLoadError as exc:
+        raise MappingLoadError(str(exc)) from exc
+
+
 def load_mapping_artifact(root: Path) -> MappingArtifact:
     """Load a Mapping Artifact directory (mapping.yaml, fingerprint.json,
-    schema.py) for execution. Always uses load_mapping_for_execution --
-    mirroring is a runtime operation, so every column must already be
-    approved -- see naru.mirror.
+    schema.py, and -- when the mapping declares an excel_target --
+    warehouse_fingerprint.json too) for execution. Always uses
+    load_mapping_for_execution -- mirroring is a runtime operation, so
+    every column must already be approved -- see naru.mirror.
     """
     if not root.is_dir():
         raise MappingLoadError(f"{root}: mapping artifact directory not found")
@@ -238,11 +321,31 @@ def load_mapping_artifact(root: Path) -> MappingArtifact:
             raise MappingLoadError(f"{root / filename}: required file missing")
 
     mapping = load_mapping_for_execution(root / "mapping.yaml")
-    try:
-        fingerprint = _load_json_model(root / "fingerprint.json", Fingerprint)
-    except ArtifactLoadError as exc:
-        raise MappingLoadError(str(exc)) from exc
+    fingerprint = _load_fingerprint(root / "fingerprint.json")
     target_row = _load_target_row(root / "schema.py")
+
+    warehouse_fingerprint: Fingerprint | None = None
+    if mapping.excel_target is not None:
+        warehouse_fingerprint_path = root / "warehouse_fingerprint.json"
+        if not warehouse_fingerprint_path.exists():
+            raise MappingLoadError(
+                f"{warehouse_fingerprint_path}: required file missing -- "
+                "mapping.yaml declares an excel_target, which needs this file "
+                "for warehouse-side drift detection (spec.md §2.7)"
+            )
+        warehouse_fingerprint = _load_fingerprint(warehouse_fingerprint_path)
+        width = len(mapping.excel_target.column_order)
+        if len(warehouse_fingerprint.columns) != width:
+            raise MappingLoadError(
+                f"{warehouse_fingerprint_path}: declares "
+                f"{len(warehouse_fingerprint.columns)} column(s), but "
+                f"excel_target's region is {width} column(s) wide -- these must match"
+            )
+
     return MappingArtifact(
-        root=root, mapping=mapping, fingerprint=fingerprint, target_row=target_row
+        root=root,
+        mapping=mapping,
+        fingerprint=fingerprint,
+        target_row=target_row,
+        warehouse_fingerprint=warehouse_fingerprint,
     )

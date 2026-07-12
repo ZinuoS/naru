@@ -1,30 +1,41 @@
-"""Mirror a client file into a SQL target through a frozen Mapping
-Artifact: `naru mirror`, per docs/spec.md §2.7.
+"""Mirror a client file into a SQL or Excel target through a frozen
+Mapping Artifact: `naru mirror`, per docs/spec.md §2.7.
 
 Sequence:
   1. Fingerprint check on the source file (naru.fingerprint, reusing the
      same Week 4 machinery naru.runtime.run uses -- see
-     naru.runtime.FingerprintDriftError).
+     naru.runtime.FingerprintDriftError). For an Excel target, the
+     warehouse side gets the *same* check against its own declared
+     header region (naru.mapping.ExcelTarget/warehouse_fingerprint.json)
+     -- spec.md §2.7: "fingerprint check on both sides... each halt with
+     a report."
   2. Apply the frozen crosswalk: promote the file's own header row to
      column names, then run each column's transform (naru.mapping.
      apply_transform -- ast-parsed, never eval()).
-  3. Key-based duplicate check against the target table, checking both
-     the batch against existing active rows AND the batch against itself
-     (two source rows sharing a key is just as much a collision as one
-     colliding with an existing row). Any collision aborts before
-     anything is written -- on_duplicate is always "fail" in v0.1
-     (naru.mapping.Mapping rejects "skip" outright), so there is no
-     partial/upsert path to fall into.
+  3. Key-based duplicate check against the target (a SQLite table, or the
+     existing rows in an Excel region), checking both the batch against
+     existing rows AND the batch against itself (two source rows sharing
+     a key is just as much a collision as one colliding with an existing
+     row). Any collision aborts before anything is written -- on_duplicate
+     is always "fail" in v0.1 (naru.mapping.Mapping rejects "skip"
+     outright), so there is no partial/upsert path to fall into.
   4. Build the reconciliation summary: rows in/out, per-numeric-column
      sums pre/post transform, unmapped source columns (and, since
      unmapped_source_columns: fail aborts, only "warn" columns ever reach
      this point), and target columns this mapping doesn't populate.
-  5. dry_run=True (the default) writes nothing -- mirror() returns the
-     summary and proposed rows for the caller to render and inspect.
-     dry_run=False goes through the standard store path (store.
-     create_mirror_table, store.load_mirror_rows), with lineage tracing
-     every mirrored row to its source file hash and row span exactly as
-     naru.runtime.run's own final-table loads do.
+  5. dry_run=True (the default) writes nothing. dry_run=False:
+     - SQL target: the standard store path (store.create_mirror_table,
+       store.load_mirror_rows), with lineage tracing every mirrored row
+       to its source file hash and row span, exactly as naru.runtime.
+       run's own final-table loads do.
+     - Excel target: a timestamped backup of the warehouse file is
+       written first, then new rows are appended strictly below the
+       declared region's last existing data row -- no existing cell,
+       formula, formatting, named range, or other sheet is ever touched.
+       There is no SQLite lineage table for an Excel target (nothing
+       here writes to SQLite at all); the backup file plus the new
+       rows' position (append-only, first new row = old last row + 1)
+       is the audit trail.
 
 mirror() itself does no printing (CLAUDE.md directive 5: pure functions
 in src/naru/, I/O at the edges) -- ReconciliationSummary.render() builds
@@ -32,19 +43,23 @@ the human-readable trust document; the CLI/demo layer decides when to
 print it.
 """
 
+import datetime as dt
 import io
+import shutil
 import sqlite3
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 import pandas as pd
 from openpyxl import load_workbook
+from openpyxl.utils import column_index_from_string
 from pydantic import BaseModel
 
 from naru import ops, store
-from naru.fingerprint import check_fingerprint
-from naru.mapping import Mapping, load_mapping_artifact
+from naru.fingerprint import FingerprintCheckResult, check_fingerprint
+from naru.mapping import Mapping, MappingArtifact, load_mapping_artifact
 from naru.mapping import apply_transform as apply_column_transform
 from naru.runtime import FingerprintDriftError, read_raw_grid
 
@@ -59,9 +74,10 @@ class MirrorError(Exception):
 
 class MirrorDuplicateKeyError(Exception):
     """The batch would collide on the mapping's natural key -- either with
-    an existing active row in the target table, or with another row in
-    this same batch. Names every colliding key so the operator can
-    investigate before deciding to re-run; nothing is written.
+    an existing row in the target (a SQL table's active rows, or an
+    Excel region's existing data rows), or with another row in this same
+    batch. Names every colliding key so the operator can investigate
+    before deciding to re-run; nothing is written.
     """
 
     def __init__(
@@ -101,11 +117,14 @@ class NumericColumnCheck(BaseModel):
 class ReconciliationSummary(BaseModel):
     """The user-facing trust document a dry (or committed) mirror run
     produces: what came in, what would go out (or did), and everything
-    that didn't make it into the target table by name.
+    that didn't make it into the target by name. `target` is a SQLite
+    table name for a SQL target, or the warehouse file's path for an
+    Excel target -- generic on purpose, since a mapping's own `target`
+    field (spec.md §2.7) is "SQL table or Excel region ref" either way.
     """
 
     source_file: str
-    target_table: str
+    target: str
     dry_run: bool
     rows_in: int
     rows_out: int
@@ -120,7 +139,7 @@ class ReconciliationSummary(BaseModel):
         """
         lines = ["Mirror reconciliation summary", "=" * 30, ""]
         lines.append(f"Source file    : {self.source_file}")
-        lines.append(f"Target table   : {self.target_table}")
+        lines.append(f"Target         : {self.target}")
         mode = "DRY RUN -- nothing written" if self.dry_run else "COMMITTED"
         lines.append(f"Mode           : {mode}")
         lines.append(f"Rows in file   : {self.rows_in}")
@@ -164,12 +183,12 @@ class MirrorResult(BaseModel):
     run_id: int | None
     row_ids: list[int]
     summary: ReconciliationSummary
+    backup_path: Path | None = None
 
 
 def _table_name_for_target(target: str) -> str:
     """SQLite table name for a mapping's `target` (e.g.
-    "warehouse.positions" -> "warehouse_positions"). Excel-region targets
-    aren't supported this session -- spec.md defers that split to Week 6.
+    "warehouse.positions" -> "warehouse_positions").
     """
     return target.replace(".", "_")
 
@@ -221,31 +240,24 @@ def _numeric_checks(
     return checks
 
 
-def mirror(
-    mapping_artifact: Path,
-    source_file: Path,
-    db_path: Path,
-    raw_dir: Path,
-    dry_run: bool = True,
-) -> MirrorResult:
-    """Mirror `source_file` into the SQL target described by a Mapping
-    Artifact directory at `mapping_artifact`. See this module's docstring
-    for the full sequence.
+@dataclass
+class _PreparedMirror:
+    """Everything the SQL and Excel target paths share: the crosswalked
+    and transformed output rows, plus every reconciliation-summary fact
+    that doesn't depend on which kind of target this mapping has.
     """
-    artifact = load_mapping_artifact(mapping_artifact)
-    mapping = artifact.mapping
-    table_name = _table_name_for_target(mapping.target)
 
-    raw_bytes = source_file.read_bytes()
-    # Two independent workbook loads, same reason as naru.runtime.run:
-    # fingerprint checking's type-sampling probes cells past the sheet's
-    # real extent, and openpyxl silently materializes (grows max_row/
-    # max_column on) any cell it touches, read or write.
-    fingerprint_check = check_fingerprint(
-        artifact.fingerprint, load_workbook(io.BytesIO(raw_bytes), data_only=True)
-    )
-    if not fingerprint_check.ok:
-        raise FingerprintDriftError(fingerprint_check)
+    output: pd.DataFrame
+    rows_in: int
+    unmapped_source_columns: list[str]
+    target_columns_not_populated: list[str]
+    numeric_checks: list[NumericColumnCheck]
+
+
+def _prepare(
+    artifact: MappingArtifact, raw_bytes: bytes, fingerprint_check: FingerprintCheckResult
+) -> _PreparedMirror:
+    mapping = artifact.mapping
     assert fingerprint_check.matched_sheet is not None  # ok=True guarantees this
 
     wb = load_workbook(io.BytesIO(raw_bytes), data_only=True)
@@ -259,40 +271,74 @@ def mirror(
     )
     if unmapped_source_columns and mapping.unmapped_source_columns == "fail":
         raise MirrorError(
-            f"unmapped_source_columns: fail -- {unmapped_source_columns} present in "
-            f"{source_file.name} but not in the mapping"
+            f"unmapped_source_columns: fail -- {unmapped_source_columns} present in the "
+            "source file but not in the mapping"
         )
 
     transformed = _apply_crosswalk(crosswalked, mapping)
     output = pd.DataFrame({column.target: transformed[column.source] for column in mapping.columns})
     output["_src_row"] = transformed["_src_row"]
 
-    conn = sqlite3.connect(db_path)
-    store.init_db(conn)
-    store.create_mirror_table(conn, table_name, artifact.target_row)
+    target_columns_not_populated = sorted(
+        set(artifact.target_row.model_fields) - {column.target for column in mapping.columns}
+    )
 
+    return _PreparedMirror(
+        output=output,
+        rows_in=len(crosswalked),
+        unmapped_source_columns=unmapped_source_columns,
+        target_columns_not_populated=target_columns_not_populated,
+        numeric_checks=_numeric_checks(crosswalked, transformed, output, mapping),
+    )
+
+
+def _check_duplicate_keys(
+    mapping: Mapping, output: pd.DataFrame, existing_keys: set[tuple[object, ...]]
+) -> None:
     new_keys = [tuple(row) for row in output[mapping.key].itertuples(index=False, name=None)]
-    existing_keys = store.mirror_table_keys(conn, table_name, mapping.key)
     colliding_with_existing = sorted(set(new_keys) & existing_keys)
     key_counts = Counter(new_keys)
     colliding_within_batch = sorted(key for key, count in key_counts.items() if count > 1)
     if colliding_with_existing or colliding_within_batch:
-        conn.close()
         raise MirrorDuplicateKeyError(colliding_with_existing, colliding_within_batch)
 
-    target_columns_not_populated = sorted(
-        set(artifact.target_row.model_fields) - {column.target for column in mapping.columns}
-    )
+
+def _mirror_sql(
+    artifact: MappingArtifact,
+    source_file: Path,
+    raw_bytes: bytes,
+    db_path: Path,
+    raw_dir: Path,
+    fingerprint_check: FingerprintCheckResult,
+    prepared: _PreparedMirror,
+    dry_run: bool,
+) -> MirrorResult:
+    assert fingerprint_check.matched_sheet is not None  # ok=True guarantees this
+    mapping = artifact.mapping
+    table_name = _table_name_for_target(mapping.target)
+    output = prepared.output
+
+    conn = sqlite3.connect(db_path)
+    store.init_db(conn)
+    store.create_mirror_table(conn, table_name, artifact.target_row)
+
+    existing_keys = store.mirror_table_keys(conn, table_name, mapping.key)
+    try:
+        _check_duplicate_keys(mapping, output, existing_keys)
+    except MirrorDuplicateKeyError:
+        conn.close()
+        raise
+
     summary = ReconciliationSummary(
         source_file=source_file.name,
-        target_table=table_name,
+        target=table_name,
         dry_run=dry_run,
-        rows_in=len(crosswalked),
+        rows_in=prepared.rows_in,
         rows_out=len(output),
-        numeric_checks=_numeric_checks(crosswalked, transformed, output, mapping),
-        unmapped_source_columns=unmapped_source_columns,
+        numeric_checks=prepared.numeric_checks,
+        unmapped_source_columns=prepared.unmapped_source_columns,
         unmapped_source_columns_action=mapping.unmapped_source_columns,
-        target_columns_not_populated=target_columns_not_populated,
+        target_columns_not_populated=prepared.target_columns_not_populated,
     )
 
     if dry_run:
@@ -318,3 +364,146 @@ def mirror(
     )
     conn.close()
     return MirrorResult(dry_run=False, run_id=run_id, row_ids=row_ids, summary=summary)
+
+
+def _write_backup(target_path: Path, timestamp: dt.datetime) -> Path:
+    """Timestamped copy of the warehouse file, written before any
+    modification (spec.md §2.7).
+
+    `timestamp` is always caller-supplied (see mirror()'s `now`
+    parameter) -- this function itself never reads the wall clock, so
+    it's trivially deterministic to test. The clock read that produces a
+    real timestamp when the caller doesn't supply one lives in mirror(),
+    once, and only ever labels a backup FILENAME -- it never reaches a
+    mirrored row's data, so it isn't the kind of wall-clock dependence
+    CLAUDE.md prime directive 2 is about (output determinism); it's
+    closer to a log line's timestamp than a runtime decision.
+    """
+    stamp = timestamp.strftime("%Y%m%dT%H%M%SZ")
+    backup_path = target_path.with_name(f"{target_path.stem}.{stamp}.bak{target_path.suffix}")
+    shutil.copy2(target_path, backup_path)
+    return backup_path
+
+
+def _mirror_excel(
+    artifact: MappingArtifact,
+    source_file: Path,
+    prepared: _PreparedMirror,
+    dry_run: bool,
+    now: dt.datetime,
+) -> MirrorResult:
+    mapping = artifact.mapping
+    excel_target = mapping.excel_target
+    warehouse_fingerprint = artifact.warehouse_fingerprint
+    assert excel_target is not None  # guaranteed by the caller's dispatch
+    assert warehouse_fingerprint is not None  # guaranteed by load_mapping_artifact
+    output = prepared.output
+    target_path = artifact.root / excel_target.path
+
+    # Warehouse-side fingerprint check -- the same Fingerprint/
+    # check_fingerprint machinery as the source side (spec.md §2.7).
+    # Loaded data_only=True, and never touched again: same reason as
+    # naru.runtime.run and mirror()'s own source-side check -- openpyxl
+    # silently materializes (grows max_row/max_column on) any cell it
+    # touches, and fingerprint checking's type-sampling probes cells
+    # past the region's real extent.
+    warehouse_check = check_fingerprint(
+        warehouse_fingerprint, load_workbook(target_path, data_only=True)
+    )
+    if not warehouse_check.ok:
+        raise FingerprintDriftError(warehouse_check)
+
+    # A second, independent load, WITHOUT data_only -- formula cells'
+    # `.value` is the formula string, not its last-computed value, so a
+    # later save() re-emits the formula unchanged rather than baking in
+    # a snapshot.
+    live_wb = load_workbook(target_path)
+    ws = live_wb[warehouse_fingerprint.sheet]
+    header_row = warehouse_fingerprint.header_row
+    first_col = column_index_from_string(excel_target.first_data_col)
+    last_col = column_index_from_string(excel_target.last_data_col)
+
+    last_data_row = header_row
+    for row in range(header_row + 1, ws.max_row + 1):
+        if any(
+            ws.cell(row=row, column=col).value is not None for col in range(first_col, last_col + 1)
+        ):
+            last_data_row = row
+
+    key_positions = {
+        field: first_col + excel_target.column_order.index(field) for field in mapping.key
+    }
+    existing_keys: set[tuple[object, ...]] = set()
+    for row in range(header_row + 1, last_data_row + 1):
+        existing_keys.add(
+            tuple(ws.cell(row=row, column=key_positions[k]).value for k in mapping.key)
+        )
+    _check_duplicate_keys(mapping, output, existing_keys)
+
+    summary = ReconciliationSummary(
+        source_file=source_file.name,
+        target=excel_target.path,
+        dry_run=dry_run,
+        rows_in=prepared.rows_in,
+        rows_out=len(output),
+        numeric_checks=prepared.numeric_checks,
+        unmapped_source_columns=prepared.unmapped_source_columns,
+        unmapped_source_columns_action=mapping.unmapped_source_columns,
+        target_columns_not_populated=prepared.target_columns_not_populated,
+    )
+
+    if dry_run:
+        return MirrorResult(dry_run=True, run_id=None, row_ids=[], summary=summary)
+
+    backup_path = _write_backup(target_path, now)
+
+    for offset, record in enumerate(output.to_dict(orient="records")):
+        row_num = last_data_row + 1 + offset
+        for position, field in enumerate(excel_target.column_order):
+            ws.cell(row=row_num, column=first_col + position, value=record.get(field))
+    live_wb.save(target_path)
+
+    return MirrorResult(
+        dry_run=False, run_id=None, row_ids=[], summary=summary, backup_path=backup_path
+    )
+
+
+def mirror(
+    mapping_artifact: Path,
+    source_file: Path,
+    db_path: Path,
+    raw_dir: Path,
+    dry_run: bool = True,
+    now: dt.datetime | None = None,
+) -> MirrorResult:
+    """Mirror `source_file` into the target described by a Mapping
+    Artifact directory at `mapping_artifact` -- a SQLite table by
+    default, or the Excel region declared by `mapping.excel_target` if
+    present. See this module's docstring for the full sequence.
+
+    `now` only ever labels an Excel target's backup filename (see
+    _write_backup); it's an explicit parameter, not a bare
+    dt.datetime.now() call buried in the function body, so tests can
+    pass a fixed value and the SQL path is entirely unaffected by it.
+    """
+    artifact = load_mapping_artifact(mapping_artifact)
+    raw_bytes = source_file.read_bytes()
+    # Two independent workbook loads, same reason as naru.runtime.run:
+    # fingerprint checking's type-sampling probes cells past the sheet's
+    # real extent, and openpyxl silently materializes (grows max_row/
+    # max_column on) any cell it touches, read or write.
+    fingerprint_check = check_fingerprint(
+        artifact.fingerprint, load_workbook(io.BytesIO(raw_bytes), data_only=True)
+    )
+    if not fingerprint_check.ok:
+        raise FingerprintDriftError(fingerprint_check)
+
+    prepared = _prepare(artifact, raw_bytes, fingerprint_check)
+
+    if artifact.mapping.excel_target is not None:
+        return _mirror_excel(
+            artifact, source_file, prepared, dry_run, now or dt.datetime.now(dt.UTC)
+        )
+    return _mirror_sql(
+        artifact, source_file, raw_bytes, db_path, raw_dir, fingerprint_check, prepared, dry_run
+    )

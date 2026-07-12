@@ -309,9 +309,9 @@ class TargetRow(BaseModel):
 """
 
 
-def _write_valid_mapping_artifact(root: Path) -> Path:
+def _write_valid_mapping_artifact(root: Path, mapping_yaml: str = VALID_MAPPING_YAML) -> Path:
     root.mkdir(parents=True, exist_ok=True)
-    (root / "mapping.yaml").write_text(VALID_MAPPING_YAML)
+    (root / "mapping.yaml").write_text(mapping_yaml)
     (root / "fingerprint.json").write_text(VALID_FINGERPRINT_JSON)
     (root / "schema.py").write_text(VALID_TARGET_ROW_SCHEMA)
     return root
@@ -374,4 +374,116 @@ class TestLoadMappingArtifact:
         root = _write_valid_mapping_artifact(tmp_path / "mapping_artifact")
         (root / "schema.py").write_text("this is not valid python (((\n")
         with pytest.raises(mapping.MappingLoadError, match="failed to import"):
+            mapping.load_mapping_artifact(root)
+
+
+class TestExcelTarget:
+    def test_valid_target(self) -> None:
+        target = mapping.ExcelTarget(
+            path="warehouse.xlsx",
+            first_data_col="A",
+            last_data_col="C",
+            column_order=["deal_id", "coupon_rate", "as_of"],
+        )
+        assert target.path == "warehouse.xlsx"
+
+    def test_invalid_column_letter_raises(self) -> None:
+        with pytest.raises(ValueError, match="not a valid Excel column letter"):
+            mapping.ExcelTarget(
+                path="x.xlsx", first_data_col="A", last_data_col="1", column_order=["a"]
+            )
+
+    def test_first_data_col_must_be_a(self) -> None:
+        with pytest.raises(ValueError, match="first_data_col must be 'A'"):
+            mapping.ExcelTarget(
+                path="x.xlsx",
+                first_data_col="B",
+                last_data_col="D",
+                column_order=["a", "b", "c"],
+            )
+
+    def test_column_order_width_mismatch_raises(self) -> None:
+        with pytest.raises(ValueError, match="3 column.s. wide"):
+            mapping.ExcelTarget(
+                path="x.xlsx", first_data_col="A", last_data_col="C", column_order=["a", "b"]
+            )
+
+
+VALID_EXCEL_MAPPING_YAML = """\
+target: warehouse.positions
+key: [deal_id, as_of]
+on_duplicate: fail
+columns:
+  - source: "Deal ID"
+    target: deal_id
+    transform: ""
+    basis: exact
+    approved: true
+unmapped_source_columns: warn
+excel_target:
+  path: warehouse.xlsx
+  first_data_col: "A"
+  last_data_col: "A"
+  column_order: [deal_id]
+"""
+
+VALID_WAREHOUSE_FINGERPRINT_JSON = """\
+{
+  "sheet": "Sheet1",
+  "header_row": 1,
+  "columns": [
+    {"name": "Deal ID", "type": "string", "strictness": "strict"}
+  ]
+}
+"""
+
+
+class TestLoadMappingArtifactExcelTarget:
+    def test_valid_excel_target_loads_warehouse_fingerprint(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(
+            tmp_path / "mapping_artifact", mapping_yaml=VALID_EXCEL_MAPPING_YAML
+        )
+        (root / "warehouse_fingerprint.json").write_text(VALID_WAREHOUSE_FINGERPRINT_JSON)
+        artifact = mapping.load_mapping_artifact(root)
+        assert artifact.warehouse_fingerprint is not None
+        assert artifact.warehouse_fingerprint.sheet == "Sheet1"
+
+    def test_sql_target_has_no_warehouse_fingerprint(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(tmp_path / "mapping_artifact")
+        artifact = mapping.load_mapping_artifact(root)
+        assert artifact.warehouse_fingerprint is None
+
+    def test_missing_warehouse_fingerprint_raises(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(
+            tmp_path / "mapping_artifact", mapping_yaml=VALID_EXCEL_MAPPING_YAML
+        )
+        with pytest.raises(
+            mapping.MappingLoadError, match="warehouse_fingerprint.json: required file missing"
+        ):
+            mapping.load_mapping_artifact(root)
+
+    def test_warehouse_fingerprint_width_mismatch_raises(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(
+            tmp_path / "mapping_artifact", mapping_yaml=VALID_EXCEL_MAPPING_YAML
+        )
+        mismatched = """\
+{
+  "sheet": "Sheet1",
+  "header_row": 1,
+  "columns": [
+    {"name": "Deal ID", "type": "string", "strictness": "strict"},
+    {"name": "Extra", "type": "string", "strictness": "strict"}
+  ]
+}
+"""
+        (root / "warehouse_fingerprint.json").write_text(mismatched)
+        with pytest.raises(mapping.MappingLoadError, match="must match"):
+            mapping.load_mapping_artifact(root)
+
+    def test_invalid_warehouse_fingerprint_json_raises(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(
+            tmp_path / "mapping_artifact", mapping_yaml=VALID_EXCEL_MAPPING_YAML
+        )
+        (root / "warehouse_fingerprint.json").write_text("{not valid json")
+        with pytest.raises(mapping.MappingLoadError, match="invalid JSON"):
             mapping.load_mapping_artifact(root)

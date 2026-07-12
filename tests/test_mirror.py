@@ -1,11 +1,13 @@
 """Unit tests for src/naru/mirror.py."""
 
+import datetime as dt
 import json
+import shutil
 import sqlite3
 from pathlib import Path
 
 import pytest
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from naru import mapping, mirror
 from naru.runtime import FingerprintDriftError
@@ -177,7 +179,7 @@ class TestReconciliationSummaryRenderEmptyCases:
     def test_render_shows_placeholders_when_nothing_to_report(self) -> None:
         summary = mirror.ReconciliationSummary(
             source_file="f.xlsx",
-            target_table="t",
+            target="t",
             dry_run=True,
             rows_in=1,
             rows_out=1,
@@ -372,6 +374,383 @@ class TestMirrorMissingMappedColumn:
             mirror.mirror(
                 artifact_dir,
                 source_path,
+                tmp_path / "naru.sqlite",
+                tmp_path / "raw",
+                dry_run=True,
+            )
+
+
+WAREHOUSE_FIXTURE = Path(__file__).parent / "fixtures" / "warehouse_workbook.xlsx"
+FIXED_NOW = dt.datetime(2026, 1, 1, 12, 0, 0, tzinfo=dt.UTC)
+
+EXCEL_SOURCE_FINGERPRINT = {
+    "sheet": "Statement",
+    "header_row": 1,
+    "columns": [
+        {"name": "Deal ID", "type": "string", "strictness": "strict"},
+        {"name": "Cpn (%)", "type": "float", "strictness": "strict"},
+        {"name": "As Of", "type": "string", "strictness": "strict"},
+        {"name": "Counterparty", "type": "string", "strictness": "strict"},
+    ],
+}
+
+WAREHOUSE_FINGERPRINT = {
+    "sheet": "Positions",
+    "header_row": 1,
+    "columns": [
+        {"name": "Deal ID", "type": "string", "strictness": "strict"},
+        {"name": "Coupon Rate", "type": "float", "strictness": "strict"},
+        {"name": "As Of", "type": "string", "strictness": "strict"},
+        {"name": "Counterparty", "type": "string", "strictness": "strict"},
+    ],
+}
+
+EXCEL_TARGET_ROW_SCHEMA = """\
+from pydantic import BaseModel
+
+
+class TargetRow(BaseModel):
+    deal_id: str
+    coupon_rate: float
+    as_of: str
+    counterparty: str
+"""
+
+EXCEL_MAPPING = mapping.Mapping(
+    target="warehouse.positions",
+    key=["deal_id", "as_of"],
+    on_duplicate="fail",
+    columns=[
+        mapping.ColumnMapping(
+            source="Deal ID", target="deal_id", transform="", basis="exact", approved=True
+        ),
+        mapping.ColumnMapping(
+            source="Cpn (%)",
+            target="coupon_rate",
+            transform="coerce_numeric(scale=0.01)",
+            basis="synonym",
+            approved=True,
+        ),
+        mapping.ColumnMapping(
+            source="As Of", target="as_of", transform="", basis="exact", approved=True
+        ),
+        mapping.ColumnMapping(
+            source="Counterparty",
+            target="counterparty",
+            transform="",
+            basis="exact",
+            approved=True,
+        ),
+    ],
+    unmapped_source_columns="warn",
+    excel_target=mapping.ExcelTarget(
+        path="warehouse_workbook.xlsx",
+        first_data_col="A",
+        last_data_col="D",
+        column_order=["deal_id", "coupon_rate", "as_of", "counterparty"],
+    ),
+)
+
+
+def _write_excel_source_file(path: Path, rows: list[tuple[str, float, str, str]]) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Statement"
+    ws.cell(row=1, column=1, value="Deal ID")
+    ws.cell(row=1, column=2, value="Cpn (%)")
+    ws.cell(row=1, column=3, value="As Of")
+    ws.cell(row=1, column=4, value="Counterparty")
+    for i, (deal_id, cpn, as_of, counterparty) in enumerate(rows, start=2):
+        ws.cell(row=i, column=1, value=deal_id)
+        ws.cell(row=i, column=2, value=cpn)
+        ws.cell(row=i, column=3, value=as_of)
+        ws.cell(row=i, column=4, value=counterparty)
+    wb.save(path)
+
+
+def _write_excel_mapping_artifact(
+    root: Path,
+    mapping_obj: mapping.Mapping = EXCEL_MAPPING,
+    warehouse_fingerprint: dict[str, object] = WAREHOUSE_FINGERPRINT,
+) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "mapping.yaml").write_text(mapping.to_yaml(mapping_obj))
+    (root / "fingerprint.json").write_text(json.dumps(EXCEL_SOURCE_FINGERPRINT))
+    (root / "schema.py").write_text(EXCEL_TARGET_ROW_SCHEMA)
+    (root / "warehouse_fingerprint.json").write_text(json.dumps(warehouse_fingerprint))
+    shutil.copy2(WAREHOUSE_FIXTURE, root / "warehouse_workbook.xlsx")
+    return root
+
+
+EXCEL_DEFAULT_ROWS: list[tuple[str, float, str, str]] = [
+    ("D100", 2.75, "2024-01-31", "Gamma Securities"),
+    ("D101", 3.55, "2024-01-31", "Alpha Bank"),
+]
+
+
+@pytest.fixture
+def excel_artifact_dir(tmp_path: Path) -> Path:
+    return _write_excel_mapping_artifact(tmp_path / "mapping_artifact")
+
+
+@pytest.fixture
+def excel_source_file(tmp_path: Path) -> Path:
+    path = tmp_path / "client_statement.xlsx"
+    _write_excel_source_file(path, EXCEL_DEFAULT_ROWS)
+    return path
+
+
+class TestMirrorExcelDryRun:
+    def test_leaves_warehouse_file_byte_identical(
+        self, excel_artifact_dir: Path, excel_source_file: Path, tmp_path: Path
+    ) -> None:
+        warehouse_path = excel_artifact_dir / "warehouse_workbook.xlsx"
+        before = warehouse_path.read_bytes()
+        result = mirror.mirror(
+            excel_artifact_dir,
+            excel_source_file,
+            tmp_path / "naru.sqlite",
+            tmp_path / "raw",
+            dry_run=True,
+        )
+        assert result.backup_path is None
+        assert warehouse_path.read_bytes() == before
+
+    def test_summary_reports_target_as_file_path(
+        self, excel_artifact_dir: Path, excel_source_file: Path, tmp_path: Path
+    ) -> None:
+        result = mirror.mirror(
+            excel_artifact_dir,
+            excel_source_file,
+            tmp_path / "naru.sqlite",
+            tmp_path / "raw",
+            dry_run=True,
+        )
+        assert result.summary.target == "warehouse_workbook.xlsx"
+        assert result.summary.rows_in == 2
+        assert result.summary.rows_out == 2
+        assert result.summary.unmapped_source_columns == []
+        assert result.summary.target_columns_not_populated == []
+
+
+class TestMirrorExcelCommit:
+    def test_creates_timestamped_backup_matching_pristine_file(
+        self, excel_artifact_dir: Path, excel_source_file: Path, tmp_path: Path
+    ) -> None:
+        result = mirror.mirror(
+            excel_artifact_dir,
+            excel_source_file,
+            tmp_path / "naru.sqlite",
+            tmp_path / "raw",
+            dry_run=False,
+            now=FIXED_NOW,
+        )
+        assert result.backup_path is not None
+        assert result.backup_path.name == "warehouse_workbook.20260101T120000Z.bak.xlsx"
+        assert result.backup_path.exists()
+        assert result.backup_path.read_bytes() == WAREHOUSE_FIXTURE.read_bytes()
+
+    def test_appends_new_rows_at_correct_position_only_in_region(
+        self, excel_artifact_dir: Path, excel_source_file: Path, tmp_path: Path
+    ) -> None:
+        mirror.mirror(
+            excel_artifact_dir,
+            excel_source_file,
+            tmp_path / "naru.sqlite",
+            tmp_path / "raw",
+            dry_run=False,
+            now=FIXED_NOW,
+        )
+        wb = load_workbook(excel_artifact_dir / "warehouse_workbook.xlsx")
+        ws = wb["Positions"]
+        assert ws.max_row == 5
+        assert [ws.cell(row=4, column=c).value for c in range(1, 5)] == [
+            "D100",
+            0.0275,
+            "2024-01-31",
+            "Gamma Securities",
+        ]
+        assert [ws.cell(row=5, column=c).value for c in range(1, 5)] == [
+            "D101",
+            0.0355,
+            "2024-01-31",
+            "Alpha Bank",
+        ]
+        # columns outside the declared region (E: Notional, F: Total)
+        # must never be touched for the new rows.
+        assert ws.cell(row=4, column=5).value is None
+        assert ws.cell(row=4, column=6).value is None
+        assert ws.cell(row=5, column=5).value is None
+        assert ws.cell(row=5, column=6).value is None
+
+    def test_stray_value_outside_region_in_a_trailing_row_does_not_fool_append_position(
+        self, excel_artifact_dir: Path, tmp_path: Path
+    ) -> None:
+        # A row with a value only outside the declared region (column F,
+        # outside A:D) must not be mistaken for existing region data --
+        # the append position is judged by the region's own columns only.
+        warehouse_path = excel_artifact_dir / "warehouse_workbook.xlsx"
+        wb = load_workbook(warehouse_path)
+        wb["Positions"]["F4"] = "stray leftover value"
+        wb.save(warehouse_path)
+
+        source_path = tmp_path / "client_statement.xlsx"
+        _write_excel_source_file(source_path, [("D300", 4.5, "2024-02-29", "Delta Partners")])
+        mirror.mirror(
+            excel_artifact_dir,
+            source_path,
+            tmp_path / "naru.sqlite",
+            tmp_path / "raw",
+            dry_run=False,
+            now=FIXED_NOW,
+        )
+
+        result_wb = load_workbook(warehouse_path)
+        result_ws = result_wb["Positions"]
+        assert [result_ws.cell(row=4, column=c).value for c in range(1, 5)] == [
+            "D300",
+            0.045,
+            "2024-02-29",
+            "Delta Partners",
+        ]
+        # the pre-existing stray value outside the region must survive.
+        assert result_ws.cell(row=4, column=6).value == "stray leftover value"
+
+    def test_preserves_every_pre_existing_cell_value_formula_and_number_format(
+        self, excel_artifact_dir: Path, excel_source_file: Path, tmp_path: Path
+    ) -> None:
+        """THE test: reads back every pre-existing cell via openpyxl after
+        a commit-mode mirror and asserts values, formulas, and number
+        formats are unchanged. Deliberately does NOT compare raw file
+        bytes -- the container isn't stable across an openpyxl load/save
+        round trip even when nothing meaningful changed.
+        """
+        before_wb = load_workbook(WAREHOUSE_FIXTURE)  # formulas as formula strings
+        before_ws = before_wb["Positions"]
+        before_cells = {
+            (row, col): (
+                before_ws.cell(row=row, column=col).value,
+                before_ws.cell(row=row, column=col).number_format,
+            )
+            for row in range(1, before_ws.max_row + 1)
+            for col in range(1, before_ws.max_column + 1)
+        }
+        before_notes_ws = before_wb["Notes"]
+        before_notes_cells = {
+            (row, col): before_notes_ws.cell(row=row, column=col).value
+            for row in range(1, before_notes_ws.max_row + 1)
+            for col in range(1, before_notes_ws.max_column + 1)
+        }
+        before_cf = [
+            (str(cf.sqref), [(r.type, r.operator, r.formula) for r in cf.rules])
+            for cf in before_ws.conditional_formatting
+        ]
+        before_names = {name: dn.attr_text for name, dn in before_wb.defined_names.items()}
+        before_sheetnames = before_wb.sheetnames
+
+        mirror.mirror(
+            excel_artifact_dir,
+            excel_source_file,
+            tmp_path / "naru.sqlite",
+            tmp_path / "raw",
+            dry_run=False,
+            now=FIXED_NOW,
+        )
+
+        after_wb = load_workbook(excel_artifact_dir / "warehouse_workbook.xlsx")
+        after_ws = after_wb["Positions"]
+        for (row, col), (value, number_format) in before_cells.items():
+            assert after_ws.cell(row=row, column=col).value == value, f"cell ({row},{col}) value"
+            assert after_ws.cell(row=row, column=col).number_format == number_format, (
+                f"cell ({row},{col}) number_format"
+            )
+
+        after_notes_ws = after_wb["Notes"]
+        for (row, col), value in before_notes_cells.items():
+            assert after_notes_ws.cell(row=row, column=col).value == value
+
+        after_cf = [
+            (str(cf.sqref), [(r.type, r.operator, r.formula) for r in cf.rules])
+            for cf in after_ws.conditional_formatting
+        ]
+        assert after_cf == before_cf
+
+        after_names = {name: dn.attr_text for name, dn in after_wb.defined_names.items()}
+        assert after_names == before_names
+
+        assert after_wb.sheetnames == before_sheetnames
+
+
+class TestMirrorExcelDuplicateKey:
+    def test_key_colliding_with_existing_warehouse_row_aborts(
+        self, excel_artifact_dir: Path, tmp_path: Path
+    ) -> None:
+        # W1/2023-12-31 is one of warehouse_workbook.xlsx's existing rows.
+        source_path = tmp_path / "client_statement.xlsx"
+        _write_excel_source_file(source_path, [("W1", 5.25, "2023-12-31", "Someone")])
+        with pytest.raises(mirror.MirrorDuplicateKeyError) as exc_info:
+            mirror.mirror(
+                excel_artifact_dir,
+                source_path,
+                tmp_path / "naru.sqlite",
+                tmp_path / "raw",
+                dry_run=False,
+                now=FIXED_NOW,
+            )
+        assert exc_info.value.colliding_with_existing == [("W1", "2023-12-31")]
+
+    def test_duplicate_within_batch_aborts(self, excel_artifact_dir: Path, tmp_path: Path) -> None:
+        source_path = tmp_path / "client_statement.xlsx"
+        _write_excel_source_file(
+            source_path,
+            [
+                ("D200", 2.25, "2024-01-31", "X"),
+                ("D200", 9.75, "2024-01-31", "Y"),
+            ],
+        )
+        with pytest.raises(mirror.MirrorDuplicateKeyError) as exc_info:
+            mirror.mirror(
+                excel_artifact_dir,
+                source_path,
+                tmp_path / "naru.sqlite",
+                tmp_path / "raw",
+                dry_run=False,
+                now=FIXED_NOW,
+            )
+        assert exc_info.value.colliding_within_batch == [("D200", "2024-01-31")]
+
+    def test_duplicate_abort_writes_no_backup(
+        self, excel_artifact_dir: Path, tmp_path: Path
+    ) -> None:
+        source_path = tmp_path / "client_statement.xlsx"
+        _write_excel_source_file(source_path, [("W1", 5.25, "2023-12-31", "Someone")])
+        with pytest.raises(mirror.MirrorDuplicateKeyError):
+            mirror.mirror(
+                excel_artifact_dir,
+                source_path,
+                tmp_path / "naru.sqlite",
+                tmp_path / "raw",
+                dry_run=False,
+                now=FIXED_NOW,
+            )
+        backups = list(excel_artifact_dir.glob("*.bak.xlsx"))
+        assert backups == []
+
+
+class TestMirrorExcelWarehouseFingerprintDrift:
+    def test_renamed_warehouse_header_raises_fingerprint_drift(
+        self, excel_source_file: Path, tmp_path: Path
+    ) -> None:
+        root = _write_excel_mapping_artifact(tmp_path / "mapping_artifact")
+        warehouse_path = root / "warehouse_workbook.xlsx"
+        wb = load_workbook(warehouse_path)
+        wb["Positions"]["B1"] = "Coupon %"  # renamed from "Coupon Rate"
+        wb.save(warehouse_path)
+
+        with pytest.raises(FingerprintDriftError, match="Coupon"):
+            mirror.mirror(
+                root,
+                excel_source_file,
                 tmp_path / "naru.sqlite",
                 tmp_path / "raw",
                 dry_run=True,
