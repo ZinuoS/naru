@@ -1,0 +1,38 @@
+target: warehouse.positions
+key:
+- deal_id
+- as_of
+on_duplicate: fail
+columns:
+- source: Deal ID
+  target: deal_id
+  transform: ''
+  basis: exact
+  approved: true
+- source: Cpn (%)
+  target: coupon_rate
+  transform: coerce_numeric(scale=0.01)
+  basis: synonym
+  approved: true
+- source: As Of
+  target: as_of
+  transform: ''
+  basis: exact
+  approved: true
+- source: Broker
+  target: counterparty
+  transform: ''
+  basis: llm
+  evidence: client's 'Broker' column consistently names the counterparty on the other
+    side of the trade
+  approved: true
+unmapped_source_columns: warn
+excel_target:
+  path: warehouse_workbook.xlsx
+  first_data_col: A
+  last_data_col: D
+  column_order:
+  - deal_id
+  - coupon_rate
+  - as_of
+  - counterparty

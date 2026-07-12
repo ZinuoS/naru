@@ -5,7 +5,7 @@ explicit `as_of` parameter, which is stored exactly as given and never
 auto-filled from the clock (CLAUDE.md prime directive 1).
 
 Fingerprint checking (step a) is real (src/naru/fingerprint.py) -- a
-mismatch raises FingerprintDriftError, which the CLI (src/naru/__main__.py)
+mismatch raises FingerprintDriftError, which the CLI (src/naru/cli.py)
 turns into exit code 3 and a drift_report.json, per spec.md §2.3.
 
 Output-contract validation (step d) is also real (src/naru/validations.py).

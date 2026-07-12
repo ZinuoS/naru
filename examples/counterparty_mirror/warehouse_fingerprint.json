@@ -1,0 +1,10 @@
+{
+  "sheet": "Positions",
+  "header_row": 1,
+  "columns": [
+    {"name": "Deal ID", "type": "string", "strictness": "strict"},
+    {"name": "Coupon Rate", "type": "float", "strictness": "strict"},
+    {"name": "As Of", "type": "string", "strictness": "strict"},
+    {"name": "Counterparty", "type": "string", "strictness": "strict"}
+  ]
+}

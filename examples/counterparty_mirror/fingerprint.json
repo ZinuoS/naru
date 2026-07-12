@@ -1,0 +1,11 @@
+{
+  "sheet": "Statement",
+  "header_row": 1,
+  "columns": [
+    {"name": "Deal ID", "type": "string", "strictness": "strict"},
+    {"name": "Cpn (%)", "type": "float", "strictness": "strict"},
+    {"name": "As Of", "type": "string", "strictness": "strict"},
+    {"name": "Broker", "type": "string", "strictness": "strict"},
+    {"name": "Notes", "type": "string", "strictness": "strict"}
+  ]
+}

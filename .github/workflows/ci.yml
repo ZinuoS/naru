@@ -45,7 +45,7 @@ jobs:
         run: |
           set -e
           shopt -s nullglob
-          for artifact in pipelines/*/*/ examples/*/*/; do
+          for artifact in pipelines/*/*/ examples/*/; do
             echo "naru lint ${artifact}"
             uv run python -m naru lint "${artifact%/}"
           done

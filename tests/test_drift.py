@@ -10,11 +10,14 @@ from typing import Any
 
 import pytest
 from openpyxl import load_workbook
+from typer.testing import CliRunner
 
-from naru import __main__ as cli
+from naru import cli
 
 ARTIFACT_PATH = Path(__file__).resolve().parent.parent / "pipelines" / "ust_auction_results" / "v1"
 GOLDEN_INPUT = ARTIFACT_PATH / "golden" / "input_sample.xlsx"
+
+runner = CliRunner()
 
 
 @pytest.fixture(autouse=True)
@@ -28,7 +31,8 @@ def _isolated_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _run_cli(input_path: Path) -> int:
-    return cli.main(["run", str(ARTIFACT_PATH), str(input_path)])
+    result = runner.invoke(cli.app, ["run", str(ARTIFACT_PATH), str(input_path)])
+    return int(result.exit_code)
 
 
 def _read_drift_report() -> dict[str, Any]:

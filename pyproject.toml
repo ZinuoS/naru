@@ -14,6 +14,9 @@ dependencies = [
     "pyyaml",
 ]
 
+[project.scripts]
+naru = "naru.cli:app"
+
 [dependency-groups]
 dev = [
     "pytest",
