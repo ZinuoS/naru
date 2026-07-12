@@ -220,6 +220,23 @@ class TestLoadMappingForExecution:
         m = mapping.load_mapping_for_execution(path)
         assert len(m.columns) == 2
 
+    def test_empty_transform_is_a_noop_not_parsed(self, tmp_path: Path) -> None:
+        text = """\
+target: t
+key: [id]
+on_duplicate: fail
+columns:
+  - source: "id"
+    target: id
+    transform: ""
+    basis: exact
+    approved: true
+unmapped_source_columns: warn
+"""
+        path = _write(tmp_path / "mapping.yaml", text)
+        m = mapping.load_mapping_for_execution(path)
+        assert m.columns[0].transform == ""
+
     def test_unapproved_column_raises_naming_column(self, tmp_path: Path) -> None:
         old = "    target: coupon_rate\n    transform: coerce_numeric(scale=0.01)\n"
         old += "    basis: synonym\n    approved: true"
@@ -270,3 +287,91 @@ class TestToYaml:
         text = mapping.to_yaml(m)
         parsed = yaml.safe_load(text)
         assert "evidence" not in parsed["columns"][0]
+
+
+VALID_FINGERPRINT_JSON = """\
+{
+  "sheet": "Sheet1",
+  "header_row": 1,
+  "columns": [
+    {"name": "id", "type": "integer", "strictness": "strict"}
+  ]
+}
+"""
+
+VALID_TARGET_ROW_SCHEMA = """\
+from pydantic import BaseModel
+
+
+class TargetRow(BaseModel):
+    coupon_rate: float
+    deal_id: str
+"""
+
+
+def _write_valid_mapping_artifact(root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "mapping.yaml").write_text(VALID_MAPPING_YAML)
+    (root / "fingerprint.json").write_text(VALID_FINGERPRINT_JSON)
+    (root / "schema.py").write_text(VALID_TARGET_ROW_SCHEMA)
+    return root
+
+
+class TestLoadMappingArtifact:
+    def test_valid_artifact_loads(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(tmp_path / "mapping_artifact")
+        artifact = mapping.load_mapping_artifact(root)
+        assert artifact.root == root
+        assert artifact.mapping.target == "warehouse.positions"
+        assert artifact.fingerprint.sheet == "Sheet1"
+        assert artifact.target_row.__name__ == "TargetRow"
+
+    def test_root_not_a_directory_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(mapping.MappingLoadError, match="mapping artifact directory not found"):
+            mapping.load_mapping_artifact(tmp_path / "does_not_exist")
+
+    def test_missing_mapping_yaml_raises_naming_file(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(tmp_path / "mapping_artifact")
+        (root / "mapping.yaml").unlink()
+        with pytest.raises(mapping.MappingLoadError, match="mapping.yaml: required file missing"):
+            mapping.load_mapping_artifact(root)
+
+    def test_missing_fingerprint_raises_naming_file(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(tmp_path / "mapping_artifact")
+        (root / "fingerprint.json").unlink()
+        with pytest.raises(
+            mapping.MappingLoadError, match="fingerprint.json: required file missing"
+        ):
+            mapping.load_mapping_artifact(root)
+
+    def test_missing_schema_raises_naming_file(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(tmp_path / "mapping_artifact")
+        (root / "schema.py").unlink()
+        with pytest.raises(mapping.MappingLoadError, match="schema.py: required file missing"):
+            mapping.load_mapping_artifact(root)
+
+    def test_invalid_fingerprint_json_raises(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(tmp_path / "mapping_artifact")
+        (root / "fingerprint.json").write_text("{not valid json")
+        with pytest.raises(mapping.MappingLoadError, match="invalid JSON"):
+            mapping.load_mapping_artifact(root)
+
+    def test_schema_missing_target_row_raises(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(tmp_path / "mapping_artifact")
+        (root / "schema.py").write_text("x = 1\n")
+        with pytest.raises(mapping.MappingLoadError, match="missing required class 'TargetRow'"):
+            mapping.load_mapping_artifact(root)
+
+    def test_schema_target_row_not_basemodel_raises(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(tmp_path / "mapping_artifact")
+        (root / "schema.py").write_text("class TargetRow:\n    pass\n")
+        with pytest.raises(
+            mapping.MappingLoadError, match="'TargetRow' must be a pydantic BaseModel"
+        ):
+            mapping.load_mapping_artifact(root)
+
+    def test_schema_import_error_raises(self, tmp_path: Path) -> None:
+        root = _write_valid_mapping_artifact(tmp_path / "mapping_artifact")
+        (root / "schema.py").write_text("this is not valid python (((\n")
+        with pytest.raises(mapping.MappingLoadError, match="failed to import"):
+            mapping.load_mapping_artifact(root)
