@@ -1,10 +1,12 @@
 """CLI entry point: python -m naru <subcommand> ...
 
   naru run <artifact> <input> [--as-of YYYY-MM-DD]
+  naru test <artifact>
 
-Exit codes: 0 success; 3 fingerprint drift (spec.md §2.3) -- also writes
-drift_report.json in the current directory; 4 output/validation failure;
-1 anything else uncaught (a real bug, not a modeled failure mode).
+Exit codes: 0 success; 2 golden mismatch (naru test: schema or value
+drift); 3 fingerprint drift (spec.md §2.3) -- also writes drift_report.json
+in the current directory; 4 output/validation failure; 1 anything else
+uncaught (a real bug, not a modeled failure mode).
 """
 
 import argparse
@@ -13,6 +15,7 @@ import json
 import sys
 from pathlib import Path
 
+from naru.goldenharness import run_golden_test
 from naru.runtime import FingerprintDriftError, RuntimeCheckError, run
 
 DB_PATH = Path("naru.sqlite")
@@ -71,6 +74,26 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_test(args: argparse.Namespace) -> int:
+    artifact_path = Path(args.artifact)
+    result = run_golden_test(artifact_path)
+
+    if result.schema_differences:
+        print(f"SCHEMA DRIFT: {artifact_path}", file=sys.stderr)
+        for difference in result.schema_differences:
+            print(f"  {difference}", file=sys.stderr)
+        return 2
+
+    if result.value_differences:
+        print(f"VALUE DRIFT: {artifact_path}", file=sys.stderr)
+        for difference in result.value_differences:
+            print(f"  {difference}", file=sys.stderr)
+        return 2
+
+    print(f"golden test passed: {artifact_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="naru")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -82,6 +105,12 @@ def main(argv: list[str] | None = None) -> int:
         "--as-of", default=None, help="ISO date, stored as given, never inferred"
     )
     run_parser.set_defaults(func=_cmd_run)
+
+    test_parser = subparsers.add_parser(
+        "test", help="rerun an artifact's golden and compare against expected_output.parquet"
+    )
+    test_parser.add_argument("artifact")
+    test_parser.set_defaults(func=_cmd_test)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

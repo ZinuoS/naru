@@ -56,7 +56,7 @@ class FingerprintDriftError(Exception):
         super().__init__(f"fingerprint drift: {summary}")
 
 
-def _read_raw_grid(wb: Workbook, sheet_name: str) -> pd.DataFrame:
+def read_raw_grid(wb: Workbook, sheet_name: str) -> pd.DataFrame:
     """Read one already-loaded sheet's raw cell grid into a DataFrame,
     tagging each row with its 1-indexed source row number in `_src_row`.
     """
@@ -126,7 +126,7 @@ def run(
 
     assert fingerprint_check.matched_sheet is not None  # ok=True guarantees this
     wb = load_workbook(io.BytesIO(raw_bytes), data_only=True)
-    raw_grid = _read_raw_grid(wb, fingerprint_check.matched_sheet)
+    raw_grid = read_raw_grid(wb, fingerprint_check.matched_sheet)
     transformed = artifact.transform(raw_grid)
 
     business_columns = [c for c in transformed.columns if c != "_src_row"]

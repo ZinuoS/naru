@@ -31,3 +31,12 @@ jobs:
 
       - name: Pytest
         run: uv run pytest --cov
+
+      - name: Golden harness (per pipeline artifact)
+        run: |
+          set -e
+          shopt -s nullglob
+          for artifact in pipelines/*/*/; do
+            echo "naru test ${artifact}"
+            uv run python -m naru test "${artifact%/}"
+          done

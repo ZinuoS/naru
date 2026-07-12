@@ -13,7 +13,7 @@ from openpyxl import load_workbook
 
 from naru import store
 from naru.artifact import load_artifact
-from naru.runtime import _read_raw_grid, run
+from naru.runtime import read_raw_grid, run
 
 ARTIFACT_PATH = Path(__file__).resolve().parent.parent / "pipelines" / "ust_auction_results" / "v1"
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "ust_lite.xlsx"
@@ -29,7 +29,7 @@ class TestArtifactLoadsAndTransforms:
     def test_transform_matches_frozen_golden(self) -> None:
         artifact = load_artifact(ARTIFACT_PATH)
         wb = load_workbook(FIXTURE_PATH, data_only=True)
-        raw_grid = _read_raw_grid(wb, artifact.manifest.sheet)
+        raw_grid = read_raw_grid(wb, artifact.manifest.sheet)
         actual = artifact.transform(raw_grid)
         expected = pd.read_parquet(ARTIFACT_PATH / "golden" / "expected_output.parquet")
         pd.testing.assert_frame_equal(actual, expected)
