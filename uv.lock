@@ -449,11 +449,12 @@ wheels = [
 
 [[package]]
 name = "naru"
-version = "0.0.1.dev0"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "openpyxl" },
     { name = "pandas" },
+    { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "sqlalchemy" },
@@ -464,7 +465,6 @@ dependencies = [
 dev = [
     { name = "mypy" },
     { name = "pre-commit" },
-    { name = "pyarrow" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -474,6 +474,7 @@ dev = [
 requires-dist = [
     { name = "openpyxl" },
     { name = "pandas" },
+    { name = "pyarrow" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pyyaml" },
     { name = "sqlalchemy" },
@@ -484,7 +485,6 @@ requires-dist = [
 dev = [
     { name = "mypy" },
     { name = "pre-commit" },
-    { name = "pyarrow" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
