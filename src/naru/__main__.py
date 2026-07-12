@@ -2,11 +2,17 @@
 
   naru run <artifact> <input> [--as-of YYYY-MM-DD]
   naru test <artifact>
+  naru lint <artifact>
 
 Exit codes: 0 success; 2 golden mismatch (naru test: schema or value
 drift); 3 fingerprint drift (spec.md §2.3) -- also writes drift_report.json
-in the current directory; 4 output/validation failure; 1 anything else
+in the current directory; 4 output/validation failure; 5 lint failure
+(temporary -- Week 6's full CLI, src/naru/cli.py, consolidates and
+documents the final scheme in docs/exit_codes.md); 1 anything else
 uncaught (a real bug, not a modeled failure mode).
+
+This module is a stopgap: naru lint needs *something* CI can call today,
+ahead of the typer-based cli.py that supersedes this whole file.
 """
 
 import argparse
@@ -16,6 +22,7 @@ import sys
 from pathlib import Path
 
 from naru.goldenharness import run_golden_test
+from naru.lint import LintError, lint_artifact
 from naru.runtime import FingerprintDriftError, RuntimeCheckError, run
 
 DB_PATH = Path("naru.sqlite")
@@ -94,6 +101,24 @@ def _cmd_test(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_lint(args: argparse.Namespace) -> int:
+    artifact_path = Path(args.artifact)
+    try:
+        findings = lint_artifact(artifact_path)
+    except LintError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    if findings:
+        print(f"LINT FAILED: {artifact_path}", file=sys.stderr)
+        for finding in findings:
+            print(f"  {finding.render()}", file=sys.stderr)
+        return 5
+
+    print(f"lint passed: {artifact_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="naru")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -111,6 +136,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     test_parser.add_argument("artifact")
     test_parser.set_defaults(func=_cmd_test)
+
+    lint_parser = subparsers.add_parser(
+        "lint", help="static checks on a pipeline or Mapping Artifact directory"
+    )
+    lint_parser.add_argument("artifact")
+    lint_parser.set_defaults(func=_cmd_lint)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

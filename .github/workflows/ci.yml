@@ -40,3 +40,12 @@ jobs:
             echo "naru test ${artifact}"
             uv run python -m naru test "${artifact%/}"
           done
+
+      - name: Lint (per pipeline and Mapping Artifact)
+        run: |
+          set -e
+          shopt -s nullglob
+          for artifact in pipelines/*/*/ examples/*/*/; do
+            echo "naru lint ${artifact}"
+            uv run python -m naru lint "${artifact%/}"
+          done

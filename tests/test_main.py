@@ -258,6 +258,25 @@ class TestCmdTest:
         assert exit_code == 2
 
 
+class TestCmdLint:
+    def test_clean_artifact_returns_zero(self, artifact_dir: Path) -> None:
+        exit_code = cli.main(["lint", str(artifact_dir)])
+        assert exit_code == 0
+
+    def test_violation_returns_five(self, artifact_dir: Path) -> None:
+        (artifact_dir / "transform.py").write_text(
+            "import os\n\n\ndef transform(df):\n    return df\n"
+        )
+        exit_code = cli.main(["lint", str(artifact_dir)])
+        assert exit_code == 5
+
+    def test_neither_artifact_kind_returns_one(self, tmp_path: Path) -> None:
+        root = tmp_path / "not_an_artifact"
+        root.mkdir()
+        exit_code = cli.main(["lint", str(root)])
+        assert exit_code == 1
+
+
 class TestMainArgParsing:
     def test_missing_subcommand_exits_nonzero(self) -> None:
         with pytest.raises(SystemExit) as exc_info:
