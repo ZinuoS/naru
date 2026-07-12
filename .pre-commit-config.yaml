@@ -10,10 +10,15 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [pydantic>=2, pytest, "typer==0.26.8"]
-        # transform.py files run inside naru.artifact's exec() sandbox
-        # (docs/adr/0003-transform-loading.md): `ops` is a namespace
-        # global injected at run time, not a real import mypy can see.
-        exclude: ^pipelines/.*/transform\.py$
+        # Scope matches pyproject.toml's [tool.mypy] files -- pipeline and
+        # example artifacts (pipelines/, examples/) are runtime-loaded data
+        # (exec()/importlib, per docs/adr/0003-transform-loading.md), not
+        # part of the importable package. Without this, pre-commit's file
+        # collection has no restriction of its own, and two same-named
+        # loose files (e.g. two unrelated schema.py under different
+        # artifact directories) collide as a duplicate module name when
+        # checked together (as `--all-files` does).
+        files: ^(src|tests|scripts)/
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
