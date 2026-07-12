@@ -3,7 +3,7 @@
 **naru** (Akkadian: *narû* — an inscribed monument protected by curse
 formulae against alteration) turns messy Excel/CSV files into governed
 SQLite databases: **compile-time intelligence, run-time determinism.**
-The current version of Naru specialises in the financial document pipelines. 
+The current version of Naru specialises in the financial document pipelines.
 
 [![CI](https://github.com/ZinuoS/naru/actions/workflows/ci.yml/badge.svg)](https://github.com/ZinuoS/naru/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/naru-data)](https://pypi.org/project/naru-data/)
