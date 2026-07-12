@@ -30,6 +30,7 @@ file convention.
 """
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -38,7 +39,13 @@ import yaml
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
 from naru import ops as ops_module
-from naru.artifact import _format_validation_error
+from naru.artifact import (
+    ArtifactLoadError,
+    Fingerprint,
+    _format_validation_error,
+    _load_json_model,
+    _load_python_module,
+)
 
 ALLOWED_TRANSFORM_OPS = ("coerce_numeric", "coerce_date", "map_values")
 
@@ -162,8 +169,12 @@ def load_mapping(path: Path) -> Mapping:
 
 def load_mapping_for_execution(path: Path) -> Mapping:
     """Load mapping.yaml and require every column be approved and every
-    transform expression to parse -- run-time mode, what naru mirror uses.
-    Raises naming exactly which column(s) aren't ready.
+    non-empty transform expression to parse -- run-time mode, what naru
+    mirror uses. Raises naming exactly which column(s) aren't ready. An
+    empty transform string is a legitimate no-op (a column that needs no
+    conversion, e.g. a plain text field mapped straight through) and is
+    never parsed -- see apply_transform, which skips calling anything for
+    one too.
     """
     mapping = load_mapping(path)
     unapproved = [c.source for c in mapping.columns if not c.approved]
@@ -174,7 +185,8 @@ def load_mapping_for_execution(path: Path) -> Mapping:
             "naru mirror can run it (spec.md §2.7)"
         )
     for col in mapping.columns:
-        parse_transform_expression(col.transform)
+        if col.transform:
+            parse_transform_expression(col.transform)
     return mapping
 
 
@@ -183,3 +195,54 @@ def to_yaml(mapping: Mapping) -> str:
     data = mapping.model_dump(mode="json", exclude_none=True)
     text: str = yaml.safe_dump(data, sort_keys=False, default_flow_style=False)
     return text
+
+
+@dataclass
+class MappingArtifact:
+    """A fully loaded Mapping Artifact directory, ready for naru mirror."""
+
+    root: Path
+    mapping: Mapping
+    fingerprint: Fingerprint
+    target_row: type[BaseModel]
+
+
+def _load_target_row(path: Path) -> type[BaseModel]:
+    """Load schema.py and extract its TargetRow model -- unlike a full
+    pipeline artifact's schema.py, a Mapping Artifact needs no SourceRow
+    (there's no per-row schema conformance check on the client-file side,
+    only the fingerprint).
+    """
+    try:
+        module = _load_python_module(path, "naru_mapping_schema")
+    except ArtifactLoadError as exc:
+        raise MappingLoadError(str(exc)) from exc
+    if not hasattr(module, "TargetRow"):
+        raise MappingLoadError(f"{path}: missing required class 'TargetRow'")
+    cls = module.TargetRow
+    if not (isinstance(cls, type) and issubclass(cls, BaseModel)):
+        raise MappingLoadError(f"{path}: 'TargetRow' must be a pydantic BaseModel subclass")
+    return cls
+
+
+def load_mapping_artifact(root: Path) -> MappingArtifact:
+    """Load a Mapping Artifact directory (mapping.yaml, fingerprint.json,
+    schema.py) for execution. Always uses load_mapping_for_execution --
+    mirroring is a runtime operation, so every column must already be
+    approved -- see naru.mirror.
+    """
+    if not root.is_dir():
+        raise MappingLoadError(f"{root}: mapping artifact directory not found")
+    for filename in ("mapping.yaml", "fingerprint.json", "schema.py"):
+        if not (root / filename).exists():
+            raise MappingLoadError(f"{root / filename}: required file missing")
+
+    mapping = load_mapping_for_execution(root / "mapping.yaml")
+    try:
+        fingerprint = _load_json_model(root / "fingerprint.json", Fingerprint)
+    except ArtifactLoadError as exc:
+        raise MappingLoadError(str(exc)) from exc
+    target_row = _load_target_row(root / "schema.py")
+    return MappingArtifact(
+        root=root, mapping=mapping, fingerprint=fingerprint, target_row=target_row
+    )

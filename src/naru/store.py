@@ -135,6 +135,100 @@ def create_final_table(
     )
 
 
+def create_mirror_table(
+    conn: sqlite3.Connection, table_name: str, target_row: type[BaseModel]
+) -> None:
+    """Create a mirror-target table from a TargetRow model.
+
+    Unlike create_final_table, there is no _verification/
+    _superseded_by_run_id: mirroring copies an external client file's data
+    into the warehouse under on_duplicate: fail semantics (a colliding key
+    aborts the whole batch, pre-checked by naru.mirror before any write),
+    not the Type-2-slowly-changing-dimension supersede pattern a governed
+    pipeline's own output uses.
+    """
+    _validate_identifier(table_name, "table name")
+    columns = _sql_columns_from_model(target_row)
+    for name, _ in columns:
+        _validate_identifier(name, "column name")
+    column_defs = ",\n    ".join(f"{name} {sql_type}" for name, sql_type in columns)
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+            row_id INTEGER PRIMARY KEY,
+            {column_defs},
+            _run_id INTEGER NOT NULL REFERENCES meta_runs (run_id)
+        )
+        """
+    )
+
+
+def mirror_table_keys(
+    conn: sqlite3.Connection, table_name: str, key_columns: list[str]
+) -> set[tuple[object, ...]]:
+    """Every existing row's natural-key tuple in a mirror table -- the
+    pre-check naru.mirror uses to detect a collision before writing
+    anything.
+    """
+    _validate_identifier(table_name, "table name")
+    for name in key_columns:
+        _validate_identifier(name, "key column")
+    cols = ", ".join(key_columns)
+    rows = conn.execute(f"SELECT {cols} FROM {table_name}").fetchall()
+    return {tuple(row) for row in rows}
+
+
+def load_mirror_rows(
+    conn: sqlite3.Connection,
+    table_name: str,
+    rows: list[dict[str, object]],
+    row_markers: list[int],
+    run_id: int,
+    file_sha256: str,
+    sheet: str,
+    lineage_version: str,
+) -> list[int]:
+    """Insert-only load into a mirror table, with one meta_lineage row per
+    output row. Never supersedes -- callers must pre-check for key
+    collisions (see mirror_table_keys) before calling this; a collision
+    reaching this function would be a caller bug, not a normal outcome.
+
+    A `row` need not cover every TargetRow field: SQLite leaves any column
+    omitted from the INSERT's column list NULL, which is exactly how an
+    unpopulated target column (naru.mirror's reconciliation summary calls
+    these out by name) is represented.
+    """
+    _validate_identifier(table_name, "table name")
+    cur = conn.cursor()
+    (max_row_id,) = cur.execute(f"SELECT COALESCE(MAX(row_id), 0) FROM {table_name}").fetchone()
+    next_row_id = 1 + max_row_id
+
+    new_row_ids = []
+    for offset, row in enumerate(rows):
+        row_id = next_row_id + offset
+        columns = list(row.keys())
+        column_list = ", ".join(columns)
+        placeholders = ", ".join("?" for _ in columns)
+        cur.execute(
+            f"INSERT INTO {table_name} (row_id, {column_list}, _run_id) "
+            f"VALUES (?, {placeholders}, ?)",
+            (row_id, *(row[c] for c in columns), run_id),
+        )
+        src_row = row_markers[offset]
+        cur.execute(
+            """
+            INSERT INTO meta_lineage
+                (final_table, row_id, file_sha256, sheet,
+                 source_row_start, source_row_end, pipeline_version, run_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (table_name, row_id, file_sha256, sheet, src_row, src_row, lineage_version, run_id),
+        )
+        new_row_ids.append(row_id)
+    conn.commit()
+    return new_row_ids
+
+
 def register_run(
     conn: sqlite3.Connection,
     pipeline_name: str,
