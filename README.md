@@ -3,51 +3,13 @@
 **naru** (Akkadian: *narû* — an inscribed monument protected by curse
 formulae against alteration) turns messy Excel/CSV files into governed
 SQLite databases: **compile-time intelligence, run-time determinism.**
+The current version of Naru specialises in the financial document pipelines. 
 
 [![CI](https://github.com/ZinuoS/naru/actions/workflows/ci.yml/badge.svg)](https://github.com/ZinuoS/naru/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/naru)](https://pypi.org/project/naru/)
 [![Python versions](https://img.shields.io/pypi/pyversions/naru)](https://pypi.org/project/naru/)
 [![License](https://img.shields.io/github/license/ZinuoS/naru)](LICENSE)
 
-## The pitch
-
-Every desk has the same file: a client sends an Excel sheet, someone
-copy-pastes it into "the real" spreadsheet, and eighteen months later
-nobody remembers which cells are formulas, which are typos someone
-fixed by hand, and which auction's high yield got fat-fingered in 2019.
-naru replaces the copy-paste with a **Pipeline Artifact** — a small,
-human-readable directory (a fingerprint of what the source file must
-look like, a schema, a transform written against a dozen constrained
-operations, frozen golden fixtures) that you review once, in a PR, like
-any other code. After that, running it is deterministic: the same input
-bytes always produce the same output rows, forever, with full lineage
-back to the source file's hash and row.
-
-An LLM can help *write* that transform. It never *runs* one. At runtime
-there is no network call, no model, no randomness, and no wall-clock
-read except an explicit `as_of` you supply yourself — nothing an infosec
-review would need to interrogate, because the objectionable parts aren't
-minimized, they're **architecturally absent**. If the live file drifts
-from what the pipeline was compiled against — a renamed column, a
-shifted header, a new sheet inserted up top — naru halts with a
-structured report naming exactly what changed, instead of silently
-loading garbage.
-
-## Why deterministic, why no runtime LLM
-
-The failure mode this project is built against isn't "the model got it
-wrong" — it's "the model got it wrong *differently each time*, and
-nobody can tell you why this month's number doesn't match last month's
-without re-reading the whole file by hand." A pipeline that decides at
-runtime is a pipeline nobody can audit, freeze, or trust with real
-money. So the LLM's entire footprint is design-time: it may *propose*
-code — a transform, a crosswalk, a query recipe — which a human reviews
-and freezes. From that point on, hand-written and LLM-assisted code are
-byte-for-byte indistinguishable and equally inspectable, because the
-constrained op API is the only thing either one is allowed to compose.
-"Dynamic" means *easy to re-author*, never that it guesses at runtime.
-This is the whole bet, in one sentence: **the LLM is a compiler, not an
-interpreter.**
 
 <!--
 DEMO-GIF-SLOT: record after the Quickstart below is verified working.
