@@ -91,7 +91,9 @@ def _parse_numeric_token(raw: object) -> float | None:
     return value
 
 
-def coerce_numeric(df: pd.DataFrame, column: str | int, allow_null: bool = False) -> pd.DataFrame:
+def coerce_numeric(
+    df: pd.DataFrame, column: str | int, allow_null: bool = False, scale: float = 1.0
+) -> pd.DataFrame:
     """Coerce a messy numeric string column to float64.
 
     `column` accepts an int position as well as a name: the raw grid
@@ -105,9 +107,19 @@ def coerce_numeric(df: pd.DataFrame, column: str | int, allow_null: bool = False
     values raise ValueError by default -- pass allow_null=True to convert
     them to NaN instead.
 
+    `scale` multiplies every parsed value afterward -- for a column whose
+    unit is only implied by its header text rather than embedded in each
+    cell (e.g. a "Cpn (%)" column holding plain "2.5" meaning 2.5%, with
+    no literal '%' character for the parser to detect), pass scale=0.01
+    to get the same decimal-fraction convention coerce_numeric already
+    produces automatically for cells that do carry a literal '%' suffix.
+
     >>> coerce_numeric(pd.DataFrame({"x": ["(1,234.50)"]}), "x")
             x
     0 -1234.5
+    >>> coerce_numeric(pd.DataFrame({"x": ["2.5"]}), "x", scale=0.01)
+           x
+    0  0.025
     """
     df = df.copy()
     parsed: list[float] = []
@@ -122,7 +134,7 @@ def coerce_numeric(df: pd.DataFrame, column: str | int, allow_null: bool = False
                 f"unparseable value {raw!r}; pass allow_null=True to convert "
                 "unparseable values to NaN instead of failing"
             )
-        parsed.append(value)
+        parsed.append(value * scale)
     df[column] = parsed
     return df
 

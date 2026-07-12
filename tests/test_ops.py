@@ -88,6 +88,19 @@ class TestCoerceNumeric:
         result = ops.coerce_numeric(df, "x")
         assert result["x"].tolist() == [2.5, 3.0]
 
+    def test_scale_multiplies_parsed_value(self) -> None:
+        result = ops.coerce_numeric(pd.DataFrame({"x": ["2.5"]}), "x", scale=0.01)
+        assert result["x"].iloc[0] == pytest.approx(0.025)
+
+    def test_scale_default_is_a_no_op(self) -> None:
+        result = ops.coerce_numeric(pd.DataFrame({"x": ["2.5"]}), "x")
+        assert result["x"].iloc[0] == pytest.approx(2.5)
+
+    def test_scale_combines_with_percent_and_parens(self) -> None:
+        # scale applies after the parser's own %/parens handling, not instead of it.
+        result = ops.coerce_numeric(pd.DataFrame({"x": ["(2.5%)"]}), "x", scale=10.0)
+        assert result["x"].iloc[0] == pytest.approx(-0.25)
+
     def test_empty_string_raises_by_default(self) -> None:
         with pytest.raises(ValueError, match="unparseable value"):
             ops.coerce_numeric(pd.DataFrame({"x": [""]}), "x")

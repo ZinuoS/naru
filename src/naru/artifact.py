@@ -6,10 +6,12 @@ golden/, CHANGELOG.md. `load_artifact` validates the entire directory
 eagerly: a malformed artifact fails here, naming the exact file and field,
 never later at run time.
 
-fingerprint.json and validations.yaml are schema-validated only this week:
-their *content* is checked against the pydantic models below, but nothing
-here checks a live source file against the fingerprint or runs the
-validations engine against output rows -- both are Week 4 (spec.md §2.3).
+fingerprint.json and validations.yaml are schema-validated *here*: their
+content is checked against the pydantic models below at load time. The
+actual enforcement -- checking a live source file against the fingerprint,
+running the validations engine against output rows -- lives in
+src/naru/fingerprint.py and src/naru/validations.py respectively, called
+from src/naru/runtime.py (spec.md §2.3).
 
 transform.py is loaded via exec() into a restricted namespace, not plain
 importlib -- see docs/adr/0003-transform-loading.md for why. Its
