@@ -263,3 +263,20 @@ def rows_as_of(conn: sqlite3.Connection, table_name: str, run_id: int) -> list[d
         (run_id, run_id),
     ).fetchall()
     return [dict(r) for r in result]
+
+
+def record_validation_results(
+    conn: sqlite3.Connection,
+    run_id: int,
+    outcomes: list[tuple[str, str, str | None]],
+) -> None:
+    """Persist every validation outcome (check_name, status, detail) for a
+    run, committed immediately -- this audit trail must survive even when
+    the run goes on to fail and abort before touching the final table.
+    """
+    conn.executemany(
+        "INSERT INTO meta_validation_results (run_id, check_name, status, detail) "
+        "VALUES (?, ?, ?, ?)",
+        [(run_id, check_name, status, detail) for check_name, status, detail in outcomes],
+    )
+    conn.commit()

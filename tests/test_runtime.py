@@ -106,7 +106,7 @@ class TestRun:
         )
 
         assert result.fingerprint_check.ok
-        assert result.output_check.ok
+        assert all(o.status == "PASS" for o in result.validation_outcomes)
         assert len(result.row_ids) == 2
 
         conn = sqlite3.connect(tmp_path / "naru.sqlite")
@@ -140,6 +140,33 @@ class TestRun:
         conn = sqlite3.connect(db_path)
         row_count = conn.execute("SELECT COUNT(*) FROM final_test").fetchone()[0]
         assert row_count == 0
+
+    def test_failing_validation_aborts_load_atomically(
+        self, artifact_dir: Path, tmp_path: Path
+    ) -> None:
+        input_path = tmp_path / "input.xlsx"
+        _make_input_workbook([(1, "a"), (2, "b")]).save(input_path)
+        # Impossible bound: 2 rows can never satisfy min=100.
+        (artifact_dir / "validations.yaml").write_text("row_count:\n  min: 100\n")
+
+        db_path = tmp_path / "naru.sqlite"
+        with pytest.raises(runtime.RuntimeCheckError, match="validation"):
+            runtime.run(
+                artifact_path=artifact_dir,
+                input_path=input_path,
+                db_path=db_path,
+                raw_dir=tmp_path / "raw",
+            )
+
+        conn = sqlite3.connect(db_path)
+        # No partial rows: the failed validation must abort before the
+        # final table is ever touched, not after loading some rows.
+        row_count = conn.execute("SELECT COUNT(*) FROM final_test").fetchone()[0]
+        assert row_count == 0
+
+        # But the audit trail survives: the failure itself is recorded.
+        results = conn.execute("SELECT check_name, status FROM meta_validation_results").fetchall()
+        assert ("row_count", "FAIL") in results
 
     def test_writes_lineage_rows_joinable_to_final_rows(
         self, artifact_dir: Path, tmp_path: Path

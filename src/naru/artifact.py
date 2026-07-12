@@ -159,15 +159,33 @@ class ValueRange(BaseModel):
     max: float | None = None
 
 
+class SumPreservation(BaseModel):
+    """A value preserved across the transform boundary.
+
+    `source_column` is a position in the raw grid (0-indexed, before
+    promote_header names anything) -- the engine parses it with the same
+    messy-numeric rules as coerce_numeric before summing, since raw values
+    are still comma/percent/parens-formatted strings at that point.
+    `target_column` is a TargetRow field name, summed post-transform.
+    """
+
+    source_column: int
+    target_column: str
+    tolerance: float = 0.0
+
+
 class Validations(BaseModel):
-    """Output contract. Schema only this week -- nothing here runs these
-    checks against real output rows yet (engine is Week 4).
+    """Output contract, per spec.md §2.1/§2.5. The engine (src/naru/
+    validations.py) runs every check listed here against real output rows;
+    results persist to meta_validation_results regardless of outcome, and
+    any failure aborts the load before any final-table row is written.
     """
 
     row_count: RowCountBounds = RowCountBounds()
     key_uniqueness: list[KeyUniqueness] = []
     null_policy: list[NullPolicy] = []
     value_ranges: list[ValueRange] = []
+    sum_preservation: list[SumPreservation] = []
 
 
 class Artifact(BaseModel):

@@ -91,8 +91,13 @@ def _parse_numeric_token(raw: object) -> float | None:
     return value
 
 
-def coerce_numeric(df: pd.DataFrame, column: str, allow_null: bool = False) -> pd.DataFrame:
+def coerce_numeric(df: pd.DataFrame, column: str | int, allow_null: bool = False) -> pd.DataFrame:
     """Coerce a messy numeric string column to float64.
+
+    `column` accepts an int position as well as a name: the raw grid
+    (before promote_header) is labeled by integer position, and this op
+    is also used to sum-check raw values pre-transform (see
+    src/naru/validations.py's sum_preservation check).
 
     Handles, in combination: surrounding whitespace, comma thousands
     separators, a trailing '%' (divides by 100), and parens-as-negative

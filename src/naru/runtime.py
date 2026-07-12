@@ -4,16 +4,19 @@ Deterministic, offline: no network, no wall-clock reads except the
 explicit `as_of` parameter, which is stored exactly as given and never
 auto-filled from the clock (CLAUDE.md prime directive 1).
 
-Fingerprint checking (step a) is real now (src/naru/fingerprint.py) -- a
+Fingerprint checking (step a) is real (src/naru/fingerprint.py) -- a
 mismatch raises FingerprintDriftError, which the CLI (src/naru/__main__.py)
 turns into exit code 3 and a drift_report.json, per spec.md §2.3.
 
-Output-contract validation (step d) is still a stub returning "ok" -- the
-validations.yaml engine is separate work. Per-row TargetRow schema
-conformance IS checked for real here, though -- that's a distinct,
+Output-contract validation (step d) is also real (src/naru/validations.py).
+Every check's outcome is persisted to meta_validation_results before any
+pass/fail decision is made, so the audit trail survives even a failed run;
+any FAIL raises before store.load_final_rows() is ever called, so a failed
+run never writes a partial final table -- atomicity by never starting,
+not by rollback. Per-row TargetRow schema conformance is a separate,
 narrower check (does this row match its declared shape?) from the
 validations.yaml business-rule engine (row-count bounds, sum
-preservation, etc.).
+preservation, etc.) -- both run, but they're checking different things.
 """
 
 import datetime as dt
@@ -28,15 +31,16 @@ from openpyxl import load_workbook
 from openpyxl.workbook.workbook import Workbook
 
 from naru import store
-from naru.artifact import Artifact, load_artifact
+from naru.artifact import load_artifact
 from naru.fingerprint import FingerprintCheckResult, check_fingerprint
+from naru.validations import ValidationOutcome, run_validations
 
 
 class RuntimeCheckError(Exception):
-    """A runtime-sequence check failed: output contract or per-row schema
-    conformance. (Fingerprint drift raises FingerprintDriftError instead --
-    it needs its own exit code and drift_report.json, so it isn't just
-    another instance of this.)
+    """A runtime-sequence check failed: output-contract validation or
+    per-row schema conformance. (Fingerprint drift raises
+    FingerprintDriftError instead -- it needs its own exit code and
+    drift_report.json, so it isn't just another instance of this.)
     """
 
 
@@ -50,17 +54,6 @@ class FingerprintDriftError(Exception):
         self.result = result
         summary = "; ".join(d.message() for d in result.differences)
         super().__init__(f"fingerprint drift: {summary}")
-
-
-@dataclass
-class CheckResult:
-    ok: bool
-    report: dict[str, Any] | None = None
-
-
-def _check_output_contract(artifact: Artifact, df: pd.DataFrame) -> CheckResult:
-    """Stub: always ok. The validations.yaml engine is separate work."""
-    return CheckResult(ok=True)
 
 
 def _read_raw_grid(wb: Workbook, sheet_name: str) -> pd.DataFrame:
@@ -81,7 +74,7 @@ class RunResult:
     run_id: int
     row_ids: list[int]
     fingerprint_check: FingerprintCheckResult
-    output_check: CheckResult
+    validation_outcomes: list[ValidationOutcome]
 
 
 def run(
@@ -97,8 +90,8 @@ def run(
       a. fingerprint check -- raises FingerprintDriftError on mismatch
       b. raw zone: store bytes + SHA256
       c. apply frozen transforms
-      d. output contract validation (stub, plus real per-row TargetRow
-         conformance)
+      d. output contract validation -- every outcome persisted, then any
+         FAIL raises before touching the final table
       e. load SQLite + lineage rows
       f. register the run
 
@@ -136,17 +129,24 @@ def run(
     raw_grid = _read_raw_grid(wb, fingerprint_check.matched_sheet)
     transformed = artifact.transform(raw_grid)
 
-    output_check = _check_output_contract(artifact, transformed)
-    if not output_check.ok:  # pragma: no cover -- stub always returns ok this week
-        raise RuntimeCheckError(f"output contract check failed: {output_check.report}")
-
     business_columns = [c for c in transformed.columns if c != "_src_row"]
     target_fields = set(artifact.target_row.model_fields)
     if set(business_columns) != target_fields:
+        conn.close()
         raise RuntimeCheckError(
             f"transform output columns {sorted(business_columns)} don't match "
             f"TargetRow fields {sorted(target_fields)}"
         )
+
+    validation_outcomes = run_validations(artifact.validations, raw_grid, transformed)
+    store.record_validation_results(
+        conn, run_id, [(o.check_name, o.status, o.detail) for o in validation_outcomes]
+    )
+    failures = [o for o in validation_outcomes if o.status == "FAIL"]
+    if failures:
+        conn.close()
+        detail = "; ".join(f"{o.check_name}: {o.detail}" for o in failures)
+        raise RuntimeCheckError(f"{len(failures)} validation(s) failed: {detail}")
 
     rows: list[dict[str, object]] = []
     row_markers: list[int] = []
@@ -173,5 +173,5 @@ def run(
         run_id=run_id,
         row_ids=row_ids,
         fingerprint_check=fingerprint_check,
-        output_check=output_check,
+        validation_outcomes=validation_outcomes,
     )

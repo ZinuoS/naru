@@ -27,3 +27,8 @@ value_ranges:
   - column: bid_to_cover
     min: 0.0
     max: 10.0
+
+sum_preservation:
+  - source_column: 4
+    target_column: offering_amt
+    tolerance: 0.01

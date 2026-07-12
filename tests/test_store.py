@@ -276,3 +276,32 @@ class TestLoadFinalRowsSupersede:
             row_markers=[4, 5],
         )
         assert row_ids == [1, 2]
+
+
+class TestRecordValidationResults:
+    def test_persists_all_outcomes(self, conn: sqlite3.Connection) -> None:
+        run_id = store.register_run(conn, "test_pipeline", "v1")
+        store.record_validation_results(
+            conn,
+            run_id,
+            [
+                ("row_count", "PASS", "40 rows within bounds"),
+                ("key_uniqueness:id", "FAIL", "duplicate keys: [1]"),
+            ],
+        )
+        rows = conn.execute(
+            "SELECT check_name, status, detail FROM meta_validation_results WHERE run_id = ?",
+            (run_id,),
+        ).fetchall()
+        assert rows == [
+            ("row_count", "PASS", "40 rows within bounds"),
+            ("key_uniqueness:id", "FAIL", "duplicate keys: [1]"),
+        ]
+
+    def test_persists_even_with_no_outcomes(self, conn: sqlite3.Connection) -> None:
+        run_id = store.register_run(conn, "test_pipeline", "v1")
+        store.record_validation_results(conn, run_id, [])
+        count = conn.execute(
+            "SELECT COUNT(*) FROM meta_validation_results WHERE run_id = ?", (run_id,)
+        ).fetchone()[0]
+        assert count == 0
