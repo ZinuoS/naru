@@ -121,11 +121,19 @@ class HeaderColumnSpec(BaseModel):
 
 
 class Fingerprint(BaseModel):
-    """What the source file must look like. Schema only this week --
-    nothing here checks a live file yet (spec.md §2.3, enforcement Week 4).
+    """What the source file must look like, per spec.md §2.3.
+
+    `sheet` is matched exactly by default; set `sheet_is_regex` to match it
+    as a regular expression instead (spec.md §2.3: "expected sheet names
+    (exact or regex)"). `sheet_index`, if given, is a structural invariant:
+    the matched sheet must be at that position in the workbook -- this is
+    what catches a new sheet being inserted before the data sheet, which
+    name-based lookup alone would silently tolerate.
     """
 
     sheet: str
+    sheet_is_regex: bool = False
+    sheet_index: int | None = None
     header_row: int
     columns: list[HeaderColumnSpec]
     max_rows_from_header_to_data: int = 5

@@ -81,20 +81,20 @@ def merged_cell_ranges(ws: Worksheet) -> list[str]:
     return sorted(str(r) for r in ws.merged_cells.ranges)
 
 
-def _cell_type(value: object) -> str:
+def cell_type(value: object) -> str:
     """Classify one cell's Python value into a coarse type label.
 
-    >>> _cell_type(None)
+    >>> cell_type(None)
     'empty'
-    >>> _cell_type(True)
+    >>> cell_type(True)
     'boolean'
-    >>> _cell_type(5)
+    >>> cell_type(5)
     'integer'
-    >>> _cell_type(5.5)
+    >>> cell_type(5.5)
     'float'
-    >>> _cell_type(dt.date(2020, 1, 1))
+    >>> cell_type(dt.date(2020, 1, 1))
     'date'
-    >>> _cell_type("x")
+    >>> cell_type("x")
     'string'
     """
     if value is None:
@@ -116,8 +116,8 @@ def _row_type_counts(ws: Worksheet, row: int, n_cols: int) -> dict[str, int]:
     """Count each coarse type across a row's cells, 1..n_cols."""
     counts: dict[str, int] = {}
     for col in range(1, n_cols + 1):
-        cell_type = _cell_type(ws.cell(row=row, column=col).value)
-        counts[cell_type] = counts.get(cell_type, 0) + 1
+        value_type = cell_type(ws.cell(row=row, column=col).value)
+        counts[value_type] = counts.get(value_type, 0) + 1
     return counts
 
 
@@ -230,7 +230,7 @@ def _infer_column_type(values: list[object]) -> str:
     non_null = [v for v in values if v is not None]
     if not non_null:
         return "empty"
-    types = {_cell_type(v) for v in non_null}
+    types = {cell_type(v) for v in non_null}
     if len(types) == 1:
         return types.pop()
     return "mixed"

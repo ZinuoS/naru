@@ -57,20 +57,20 @@ class TestMergedCellRanges:
 
 class TestCellType:
     def test_classifies_each_coarse_type(self) -> None:
-        assert profiler._cell_type(None) == "empty"
-        assert profiler._cell_type(True) == "boolean"
-        assert profiler._cell_type(5) == "integer"
-        assert profiler._cell_type(5.5) == "float"
-        assert profiler._cell_type(dt.date(2020, 1, 1)) == "date"
-        assert profiler._cell_type(dt.datetime(2020, 1, 1, 12, 0)) == "date"
-        assert profiler._cell_type("x") == "string"
+        assert profiler.cell_type(None) == "empty"
+        assert profiler.cell_type(True) == "boolean"
+        assert profiler.cell_type(5) == "integer"
+        assert profiler.cell_type(5.5) == "float"
+        assert profiler.cell_type(dt.date(2020, 1, 1)) == "date"
+        assert profiler.cell_type(dt.datetime(2020, 1, 1, 12, 0)) == "date"
+        assert profiler.cell_type("x") == "string"
 
     def test_bool_is_not_classified_as_integer(self) -> None:
         # bool is a subclass of int in Python; must be checked first.
-        assert profiler._cell_type(False) == "boolean"
+        assert profiler.cell_type(False) == "boolean"
 
     def test_unrecognized_type_falls_through_to_other(self) -> None:
-        assert profiler._cell_type(object()) == "other"
+        assert profiler.cell_type(object()) == "other"
 
 
 class TestNonStringFraction:

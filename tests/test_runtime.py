@@ -113,6 +113,34 @@ class TestRun:
         rows = conn.execute("SELECT id, label FROM final_test ORDER BY id").fetchall()
         assert rows == [(1, "a"), (2, "b")]
 
+    def test_fingerprint_drift_raises_before_any_writes(
+        self, artifact_dir: Path, tmp_path: Path
+    ) -> None:
+        input_path = tmp_path / "input.xlsx"
+        wb = _make_input_workbook([(1, "a")])
+        wb.active.cell(row=1, column=1, value="renamed_id_column")
+        wb.save(input_path)
+        # This fixture's fingerprint declares id/label as position_only, so
+        # rename the header via a strict override to actually trigger drift.
+        (artifact_dir / "fingerprint.json").write_text(
+            VALID_FINGERPRINT.replace('"strictness": "position_only"', '"strictness": "strict"')
+        )
+
+        db_path = tmp_path / "naru.sqlite"
+        with pytest.raises(runtime.FingerprintDriftError) as exc_info:
+            runtime.run(
+                artifact_path=artifact_dir,
+                input_path=input_path,
+                db_path=db_path,
+                raw_dir=tmp_path / "raw",
+            )
+        assert exc_info.value.result.differences
+        # The final table structure may exist (idempotent DDL), but no
+        # rows were ever written -- that's the atomicity guarantee.
+        conn = sqlite3.connect(db_path)
+        row_count = conn.execute("SELECT COUNT(*) FROM final_test").fetchone()[0]
+        assert row_count == 0
+
     def test_writes_lineage_rows_joinable_to_final_rows(
         self, artifact_dir: Path, tmp_path: Path
     ) -> None:

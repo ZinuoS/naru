@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from openpyxl import load_workbook
 
 from naru import store
 from naru.artifact import load_artifact
@@ -27,7 +28,8 @@ class TestArtifactLoadsAndTransforms:
 
     def test_transform_matches_frozen_golden(self) -> None:
         artifact = load_artifact(ARTIFACT_PATH)
-        raw_grid = _read_raw_grid(FIXTURE_PATH, artifact.manifest.sheet)
+        wb = load_workbook(FIXTURE_PATH, data_only=True)
+        raw_grid = _read_raw_grid(wb, artifact.manifest.sheet)
         actual = artifact.transform(raw_grid)
         expected = pd.read_parquet(ARTIFACT_PATH / "golden" / "expected_output.parquet")
         pd.testing.assert_frame_equal(actual, expected)
@@ -90,14 +92,14 @@ class TestRunEndToEnd:
 
 
 def test_cli_entry_point_runs_via_python_dash_m(tmp_path: Path) -> None:
-    """Exercises the exact `python -m naru.runtime` invocation the exit
-    test uses, in an isolated tmp_path so it never touches the repo root.
+    """Exercises the exact `python -m naru run` invocation the exit test
+    uses, in an isolated tmp_path so it never touches the repo root.
     """
     db_path = tmp_path / "naru.sqlite"
     (tmp_path / "naru_run_input.xlsx").write_bytes(FIXTURE_PATH.read_bytes())
 
     result = subprocess.run(
-        [sys.executable, "-m", "naru.runtime", str(ARTIFACT_PATH), "naru_run_input.xlsx"],
+        [sys.executable, "-m", "naru", "run", str(ARTIFACT_PATH), "naru_run_input.xlsx"],
         cwd=tmp_path,
         capture_output=True,
         text=True,

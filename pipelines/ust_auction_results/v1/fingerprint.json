@@ -1,14 +1,44 @@
 {
-  "sheet": "Results",
-  "header_row": 3,
   "columns": [
-    {"name": "auction_date", "type": "string", "strictness": "position_only"},
-    {"name": "security_term", "type": "string", "strictness": "position_only"},
-    {"name": "cusip", "type": "string", "strictness": "position_only"},
-    {"name": "high_yield", "type": "string", "strictness": "position_only"},
-    {"name": "offering_amt", "type": "string", "strictness": "position_only"},
-    {"name": "bid_to_cover", "type": "float", "strictness": "position_only"},
-    {"name": "issue_date", "type": "integer", "strictness": "position_only"}
+    {
+      "name": "Auction Date",
+      "strictness": "strict",
+      "type": "string"
+    },
+    {
+      "name": "Security Term",
+      "strictness": "strict",
+      "type": "string"
+    },
+    {
+      "name": "CUSIP",
+      "strictness": "strict",
+      "type": "string"
+    },
+    {
+      "name": "High Yield",
+      "strictness": "strict",
+      "type": "string"
+    },
+    {
+      "name": "Offering Amt ($MM)",
+      "strictness": "strict",
+      "type": "string"
+    },
+    {
+      "name": "Settlement Detail",
+      "strictness": "position_only",
+      "type": "float"
+    },
+    {
+      "name": "column_7",
+      "strictness": "position_only",
+      "type": "integer"
+    }
   ],
-  "max_rows_from_header_to_data": 1
+  "header_row": 3,
+  "max_rows_from_header_to_data": 1,
+  "sheet": "Results",
+  "sheet_index": 0,
+  "sheet_is_regex": false
 }
