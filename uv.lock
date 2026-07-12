@@ -455,6 +455,7 @@ dependencies = [
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "sqlalchemy" },
     { name = "typer" },
 ]
@@ -474,6 +475,7 @@ requires-dist = [
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "pydantic", specifier = ">=2" },
+    { name = "pyyaml" },
     { name = "sqlalchemy" },
     { name = "typer" },
 ]
