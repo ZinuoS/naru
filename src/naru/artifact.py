@@ -114,6 +114,12 @@ class Manifest(BaseModel):
     sheet: str
     target_table: str
     key: list[str]
+    # v0.1 read only .xlsx; source_format adds delimited text (naru.sources).
+    # For csv/tsv, `sheet` names the synthetic single worksheet the reader
+    # builds -- it must match fingerprint.sheet. source_options carries
+    # per-format reader overrides (delimiter, encoding).
+    source_format: Literal["xlsx", "csv", "tsv"] = "xlsx"
+    source_options: dict[str, object] = {}
 
 
 class HeaderColumnSpec(BaseModel):
@@ -324,13 +330,17 @@ def load_artifact(root: Path) -> Artifact:
     for filename in REQUIRED_FILES:
         if not (root / filename).exists():
             raise ArtifactLoadError(f"{root / filename}: required file missing")
+
+    # Manifest is parsed before the golden-input check because source_format
+    # decides which extension the golden input sample must carry.
+    manifest = _load_yaml_model(root / "manifest.yaml", Manifest)
+
     if not (root / "golden").is_dir():
         raise ArtifactLoadError(f"{root / 'golden'}: required directory missing")
-    for filename in ("input_sample.xlsx", "expected_output.parquet"):
+    golden_input = f"input_sample.{manifest.source_format}"
+    for filename in (golden_input, "expected_output.parquet"):
         if not (root / "golden" / filename).exists():
             raise ArtifactLoadError(f"{root / 'golden' / filename}: required file missing")
-
-    manifest = _load_yaml_model(root / "manifest.yaml", Manifest)
     fingerprint = _load_json_model(root / "fingerprint.json", Fingerprint)
     validations = _load_yaml_model(root / "validations.yaml", Validations)
     source_row, target_row = _load_schema(root / "schema.py")

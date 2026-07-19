@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Delimited-text source readers (CSV/TSV).** `manifest.yaml` gains
+  `source_format: xlsx | csv | tsv` (default `xlsx`) and `source_options`
+  (`delimiter`, `encoding`). `naru.sources.source_workbook_from_bytes`
+  parses delimited bytes into an in-memory single-sheet openpyxl Workbook,
+  so the fingerprint engine, raw-grid reader, golden harness, transform,
+  validation, and lineage all work unchanged. Every cell is read as a
+  string (empty field → `None`); typing stays the transform's job via
+  `coerce_numeric`/`coerce_date`, and the fingerprint guards header names.
+  Delimiter is fixed by format (no `csv.Sniffer` — a source's shape is a
+  declared, reviewable fact), decoding defaults to `utf-8-sig` (BOM-tolerant).
+  Golden inputs follow the format: `golden/input_sample.{csv,tsv,xlsx}`.
+
 ## [0.1.0] - 2026-07-12
 
 <!-- date is a placeholder for the actual v0.1.0 tag date -->

@@ -13,10 +13,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
-from openpyxl import load_workbook
 
 from naru.artifact import load_artifact
 from naru.runtime import read_raw_grid
+from naru.sources import source_workbook_from_bytes
 
 
 @dataclass
@@ -70,7 +70,13 @@ def run_golden_test(artifact_path: Path) -> GoldenTestResult:
     cell-by-cell when the columns themselves don't match isn't meaningful.
     """
     artifact = load_artifact(artifact_path)
-    wb = load_workbook(artifact_path / "golden" / "input_sample.xlsx", data_only=True)
+    golden_input = artifact_path / "golden" / f"input_sample.{artifact.manifest.source_format}"
+    wb = source_workbook_from_bytes(
+        golden_input.read_bytes(),
+        artifact.manifest.source_format,
+        artifact.manifest.sheet,
+        artifact.manifest.source_options,
+    )
     raw_grid = read_raw_grid(wb, artifact.manifest.sheet)
     actual = artifact.transform(raw_grid)
     expected = pd.read_parquet(artifact_path / "golden" / "expected_output.parquet")

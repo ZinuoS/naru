@@ -20,19 +20,18 @@ preservation, etc.) -- both run, but they're checking different things.
 """
 
 import datetime as dt
-import io
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from openpyxl import load_workbook
 from openpyxl.workbook.workbook import Workbook
 
 from naru import store
 from naru.artifact import load_artifact
 from naru.fingerprint import FingerprintCheckResult, check_fingerprint
+from naru.sources import source_workbook_from_bytes
 from naru.validations import ValidationOutcome, run_validations
 
 
@@ -112,12 +111,19 @@ def run(
     # Fingerprint checking deliberately probes cells past the sheet's real
     # extent (structural-invariant and type-sampling checks). openpyxl
     # materializes a cell -- silently growing ws.max_row -- on any access,
-    # read or write. Loading a fresh workbook for the raw-grid read avoids
+    # read or write. Building a fresh workbook for the raw-grid read avoids
     # that probing corrupting what iter_rows() later considers the sheet's
-    # true bounds.
-    fingerprint_check = check_fingerprint(
-        artifact.fingerprint, load_workbook(io.BytesIO(raw_bytes), data_only=True)
-    )
+    # true bounds. Non-.xlsx sources (naru.sources) build the same in-memory
+    # Workbook, so both reads stay format-agnostic from here on.
+    def build_wb() -> Workbook:
+        return source_workbook_from_bytes(
+            raw_bytes,
+            artifact.manifest.source_format,
+            artifact.manifest.sheet,
+            artifact.manifest.source_options,
+        )
+
+    fingerprint_check = check_fingerprint(artifact.fingerprint, build_wb())
     if not fingerprint_check.ok:
         conn.close()
         raise FingerprintDriftError(fingerprint_check)
@@ -125,8 +131,7 @@ def run(
     file_sha256 = store.register_raw_file(conn, raw_dir, raw_bytes, input_path.name, run_id)
 
     assert fingerprint_check.matched_sheet is not None  # ok=True guarantees this
-    wb = load_workbook(io.BytesIO(raw_bytes), data_only=True)
-    raw_grid = read_raw_grid(wb, fingerprint_check.matched_sheet)
+    raw_grid = read_raw_grid(build_wb(), fingerprint_check.matched_sheet)
     transformed = artifact.transform(raw_grid)
 
     business_columns = [c for c in transformed.columns if c != "_src_row"]
